@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Інтервʼю</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+
+    <!-- 1. Згода -->
+    <section id="screen-consent" class="screen">
+      <h1 id="consent-title">Інтервʼю</h1>
+      <p id="consent-text" class="consent"></p>
+      <div class="privacy-note">
+        <strong>Що важливо знати</strong>
+        <ul>
+          <li>Тут немає правильних чи неправильних відповідей.</li>
+          <li>Ви можете припинити інтервʼю в будь-який момент.</li>
+          <li>Не називайте персональних даних інших людей.</li>
+        </ul>
+      </div>
+      <div id="record-consent" class="record-consent hidden">
+        <label class="record-check">
+          <input type="checkbox" id="chk-record">
+          <span>
+            <strong>Я погоджуюсь на запис мого голосу.</strong>
+            Запис потрібен для аналізу інтервʼю та не публікується.
+            Без цієї згоди почати інтервʼю неможливо.
+          </span>
+        </label>
+      </div>
+
+      <div id="resume-box" class="resume hidden">
+        <p><strong>У вас є незавершене інтервʼю.</strong>
+           <span id="resume-detail"></span></p>
+        <div class="actions">
+          <button id="btn-resume" class="primary">Продовжити</button>
+          <button id="btn-restart" class="ghost">Почати заново</button>
+        </div>
+      </div>
+
+      <div id="voice-choice" class="voice-choice hidden">
+        <span class="voice-choice-label">Голос інтервʼюера</span>
+        <div id="voice-options" class="voice-options"></div>
+      </div>
+
+      <div id="start-box" class="actions">
+        <button id="btn-consent" class="primary">Почати інтервʼю</button>
+      </div>
+      <p id="capabilities" class="hint"></p>
+    </section>
+
+    <!-- 2. Інтервʼю -->
+    <section id="screen-interview" class="screen hidden">
+      <!-- Прогрес — зверху й нерухомий: кроки й навігація — це керування
+           розмовою, воно мусить лишатись на очах, поки прокручується сам
+           вміст питання. «Питання 4 з 60» пугало й брехало: 60 — це межа
+           гайда, а реальне інтервʼю виходить на 15-24 питання. Кожен крок
+           несе власну лічбу: скільки в ньому питань і на скільки вже
+           відповіли — а не позицію курсора, яку легко сплутати з «зроблено». -->
+      <div class="progress" aria-live="polite">
+        <ol id="progress-sections" class="sections"></ol>
+        <!-- Навігація — тут, а не над мікрофоном: вона про «де я в розмові»,
+             а не про поточну відповідь. -->
+        <div id="voice-confirm" class="voice-confirm">
+          <button id="btn-prev" class="ghost" disabled>← Попереднє</button>
+          <button id="btn-next" class="primary" disabled>Наступне питання →</button>
+        </div>
+        <div class="progress-row">
+          <p id="progress-detail" class="progress-detail"></p>
+          <!-- Повернутись до сказаного раніше — про розмову взагалі, тому тут,
+               а не в ряду дій над поточною відповіддю. -->
+          <button id="btn-history" class="ghost small">Раніше сказане</button>
+        </div>
+      </div>
+
+      <!-- Питання й чекліст прокручуються тут; прогрес угорі й зона відповіді
+           внизу нерухомі — межа прокрутки одна чітка лінія, а не випадковий
+           розрив посеред вмісту. -->
+      <div id="interview-scroll" class="interview-scroll">
+      <!-- Прослухати — дія НАД цим питанням, тому в тій самій картці, а не
+           окремим рядком під нею: людина бачить одне ціле «питання + як його
+           почути», а не два розрізнені блоки. -->
+      <blockquote id="utterance" aria-live="polite">
+        <p id="utterance-text" class="utterance-text"></p>
+        <div id="audio-bar" class="reading-bar hidden">
+          <span id="audio-dot" class="reading-dot hidden"></span>
+          <span id="audio-text" class="reading-text">Питання можна прослухати</span>
+          <button id="btn-listen" class="ghost small">🔊 Прослухати</button>
+          <button id="btn-stop-speak" class="ghost small hidden">⏹ Зупинити</button>
+        </div>
+      </blockquote>
+
+      <!-- Що ми хочемо почути в цій темі. Галочка зʼявляється, коли пункт
+           зараховано — тоді людина бачить, чого від неї чекають, і не лишається
+           наодинці з одним питанням. Стоїть останнім у прокрутній частині:
+           це найважливіше після самого питання, тому має бути на видноті. -->
+      <div id="checklist" class="checklist hidden">
+        <span class="checklist-title"><span id="checklist-title-text">Хочемо
+          почути:</span><span id="checklist-mark"
+          class="checklist-checking hidden" aria-hidden="true"></span></span>
+        <ul id="checklist-items"></ul>
+      </div>
+
+      </div><!-- /interview-scroll -->
+
+      <!-- Голосовий режим: без поля введення. Порядок навмисний — текст
+           відповіді вгорі, під ним дії над ним, далі доріжка й одразу під нею
+           кнопка запису: доріжка стосується саме запису, тому стоїть при ньому. -->
+      <div id="voice-area" class="voice-area hidden">
+        <!-- Сказане голосом не редагується текстом — лише перезаписується.
+             Це навмисне обмеження: голос лишається первинним джерелом, а не
+             чернеткою, яку можна тихо підправити. -->
+        <div class="answer-block">
+          <p id="heard" class="heard" aria-live="polite"></p>
+          <!-- Смуга відтворення власного запису: скільки вже прозвучало.
+               Показується лише під час прослуховування. -->
+          <div id="own-progress" class="own-progress hidden">
+            <span class="own-track"><i id="own-fill"></i></span>
+            <span id="own-time" class="own-time"></span>
+          </div>
+
+          <div class="answer-tools">
+            <button id="btn-play-own" class="edit-inline hidden"
+                    title="Прослухати свій запис">
+              🔊 <span id="play-own-label">Прослухати</span>
+            </button>
+          </div>
+
+          <!-- Смуга обсягу — при самому тексті відповіді, а не при чеклісті:
+               заповнюється словами того, що людина щойно сказала. -->
+          <div id="word-progress" class="word-progress hidden">
+            <span class="word-track"><i id="word-fill"></i></span>
+            <span id="word-detail" class="word-detail"></span>
+          </div>
+        </div>
+
+        <!-- Надіслати — головна дія, тому праймер і праворуч, де рука очікує
+             головну кнопку; «Сказати заново» — другорядна, ліворуч від неї. -->
+        <div class="answer-actions">
+          <button id="btn-voice-again" class="ghost" disabled
+                  title="Стерти сказане й почати відповідь заново">
+            ↺ Сказати заново
+          </button>
+          <button id="btn-send-answer" class="primary" disabled>Надіслати відповідь</button>
+        </div>
+
+        <canvas id="wave" class="wave" aria-hidden="true"></canvas>
+
+        <div class="voice-controls">
+          <button id="btn-talk" class="talk" aria-pressed="false">
+            <span class="talk-ring"></span>
+            <span id="talk-icon" class="talk-icon" aria-hidden="true">▶</span>
+            <span id="talk-label">Говорити</span>
+          </button>
+        </div>
+
+        <p id="voice-status" class="status" aria-live="polite"></p>
+      </div>
+
+      <!-- Текстовий режим (і аварійний резерв, коли мікрофона немає) -->
+      <div id="answer-area" class="answer-area hidden">
+        <textarea id="answer" rows="4"
+          placeholder="Говоріть або пишіть. Розпізнаний текст можна виправити перед відправкою."
+          aria-label="Ваша відповідь"></textarea>
+
+        <div class="controls">
+          <button id="btn-mic" class="mic" aria-pressed="false">
+            <span class="dot"></span><span id="mic-label">Говорити</span>
+          </button>
+          <button id="btn-send" class="primary" disabled>Відповісти</button>
+
+        </div>
+        <p id="expectation-text" class="expectation"></p>
+        <p id="status" class="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- Раніше сказане: питання, відповіді й можливість дописати.
+         Транскрипт від цього не переписується — доповнення стає окремим
+         ходом із позначкою, що його згадали пізніше. -->
+    <section id="history" class="history hidden" aria-live="polite">
+      <div class="history-head">
+        <h2>Раніше сказане</h2>
+        <button id="btn-history-close" class="primary">← Повернутись до питання</button>
+      </div>
+      <p class="history-hint">Якщо щось згадали — допишіть до того питання, якого
+      це стосується. Сказане раніше лишиться, доповнення стане поруч.</p>
+      <div id="history-list"></div>
+    </section>
+
+    <!-- 3. Підсумок: питання закінчились, але завершення — окрема дія.
+         Людина бачить, наскільки розгорнуто відповіла, і може ще щось
+         дописати чи почати наново, перш ніж дані підуть досліднику. -->
+    <section id="screen-summary" class="screen hidden">
+      <h1>Дякую, це всі питання</h1>
+      <p id="summary-depth" class="consent"></p>
+      <!-- Наскільки розгорнуто відповідали — кольором, а не лише числом:
+           зелений «розгорнуто» видно швидше, ніж рахувати середнє слів. -->
+      <div id="summary-quality" class="summary-quality hidden">
+        <span class="summary-quality-dot"></span>
+        <span id="summary-quality-label" class="summary-quality-label"></span>
+      </div>
+      <div class="actions summary-actions">
+        <button id="btn-summary-send" class="primary">Надіслати мої відповіді</button>
+        <button id="btn-summary-add" class="ghost">Додати ще щось</button>
+        <button id="btn-summary-restart" class="ghost">Почати інтервʼю спочатку</button>
+      </div>
+    </section>
+
+    <!-- 4. Завершення -->
+    <section id="screen-done" class="screen hidden">
+      <h1>Дякую</h1>
+      <p id="done-text" class="consent"></p>
+    </section>
+
+  </main>
+  <script src="/segments.js"></script>
+  <script src="/audio.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

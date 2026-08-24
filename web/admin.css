@@ -1,0 +1,152 @@
+/* Панель дослідника. Службовий інтерфейс: щільно, без церемоній —
+   правило профілю `tool` з пайплайну. */
+
+body.admin { background: var(--bg); }
+
+.topbar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 22px; border-bottom: 1px solid var(--line);
+  background: var(--surface); position: sticky; top: 0; z-index: 10;
+}
+.muted { color: var(--muted); }
+.tiny { font-size: 13px; }
+.flash { margin-left: auto; font-size: 14px; color: var(--muted); }
+.flash.ok { color: #2f7a52; }
+.flash.bad { color: var(--danger); }
+
+.layout { display: grid; grid-template-columns: 250px 1fr; min-height: calc(100vh - 53px); }
+.sidebar { border-right: 1px solid var(--line); padding: 18px 16px; }
+.sidebar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+.new-space {
+  background: var(--surface); border: 1px solid var(--accent);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+}
+.new-space .actions { margin-top: 4px; }
+.new-space .error-text { display: block; margin: 8px 0 0; }
+
+.space-list { list-style: none; margin: 0 0 16px; padding: 0; }
+.space-list li { margin-bottom: 4px; }
+.space-list button {
+  width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
+  color: var(--text); padding: 9px 11px; font-size: 15px;
+}
+.space-list button:hover { border-color: var(--line); }
+.space-list button.active { background: var(--surface); border-color: var(--accent); }
+.space-list .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.space-list .broken { color: var(--danger); }
+.space-list .draft-tag {
+  display: inline-block; font-size: 11px; margin-left: 6px;
+  padding: 1px 6px; border-radius: 10px;
+  border: 1px solid var(--muted); color: var(--muted);
+}
+
+.content { padding: 22px 26px 120px; max-width: 860px; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.tab { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 14px; border-radius: 0; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
+
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+label.block { display: block; }
+label.check { display: flex; align-items: center; gap: 9px; font-size: 15px; color: var(--text); }
+input[type="text"], input[type="number"], select, textarea {
+  display: block; width: 100%; margin-top: 6px;
+  font: inherit; font-size: 15px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+}
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.section-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 6px; }
+.section-head h2 { font-size: 17px; margin: 0; }
+button.small { padding: 6px 11px; font-size: 13px; }
+
+.topic {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px 18px; margin: 12px 0;
+}
+.topic-head { display: flex; gap: 12px; align-items: flex-end; }
+.topic-head label { flex: 1; margin-bottom: 10px; }
+.topic-head .narrow { flex: 0 0 90px; }
+.topic .drop { color: var(--danger); background: transparent; border: 1px solid var(--line); padding: 8px 11px; margin-bottom: 10px; }
+
+.actions.sticky {
+  position: sticky; bottom: 0; background: var(--bg);
+  padding: 16px 0; border-top: 1px solid var(--line); margin-top: 26px;
+}
+.error-text { color: var(--danger); font-size: 14px; align-self: center; }
+
+.run {
+  display: grid; grid-template-columns: 1fr auto auto auto; gap: 14px; align-items: center;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); margin-bottom: 8px; font-size: 14px;
+}
+.run .pill { font-size: 12px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
+.run .pill.warn { color: var(--danger); border-color: var(--danger); }
+
+#transcript { margin-top: 26px; }
+.turn { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.turn .who { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.turn.interviewer .who { color: var(--accent); }
+.voice-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 18px; }
+.voice-row {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 9px 12px; background: var(--surface); font-size: 14px;
+}
+.voice-row.active { border-color: var(--accent); }
+.voice-row .name { flex: 1; }
+.voice-row .lang { color: var(--muted); font-size: 12px; }
+.voice-row button { padding: 5px 10px; font-size: 13px; background: transparent; border: 1px solid var(--line); color: var(--text); }
+.voice-row .chosen { color: var(--accent); font-size: 12px; }
+input[type="range"] { padding: 0; accent-color: var(--accent); }
+input[type="checkbox"] { accent-color: var(--accent); }
+
+.masked-note { font-size: 12px; color: var(--muted); margin-top: 4px; font-style: italic; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+
+.incident { font-size: 13px; color: var(--danger); padding: 6px 0; }
+
+@media (max-width: 780px) {
+  .layout { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--line); }
+  .row { grid-template-columns: 1fr; }
+}
+
+
+/* ── Банк реплік ─────────────────────────────────────────────────────── */
+
+.gaps {
+  background: var(--surface); border: 1px solid var(--danger);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; font-size: 14px;
+}
+.gaps ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+
+.phrase-group { margin-bottom: 22px; }
+.phrase-group h3 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin: 0 0 8px;
+}
+.phrase {
+  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px;
+}
+.phrase.unrecorded { border-left: 3px solid var(--danger); }
+.phrase.recorded { border-left: 3px solid var(--accent); }
+.phrase textarea { margin-top: 0; font-size: 14px; }
+.phrase .meta { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+.phrase .meta select, .phrase .meta input { margin-top: 0; font-size: 13px; padding: 5px 8px; width: auto; }
+.phrase .pid { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }
+.phrase .controls { display: flex; flex-direction: column; gap: 6px; min-width: 132px; }
+.phrase .controls button { font-size: 13px; padding: 7px 10px; }
+.phrase .rec { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+.phrase .rec.active { background: var(--danger); color: #fff; }
+.phrase .state { font-size: 12px; color: var(--muted); text-align: center; }
+.phrase .warn { font-size: 12px; color: var(--danger); margin-top: 6px; }
+
+/* Записи голосу під рядком інтервʼю. */
+.voice-clips { padding: 8px 0 14px 12px; border-left: 2px solid var(--line); margin: -6px 0 10px 6px; }
+.voice-clip { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.voice-clip audio { width: 100%; max-width: 420px; }

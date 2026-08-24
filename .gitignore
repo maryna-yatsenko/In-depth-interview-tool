@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.venv/
+.venv-espnet/
+
+# Транскрипти — первинні дані дослідження. У git не їдуть ніколи.
+data/
+
+# Простори містять ключі й доменну специфіку. У git — тільки референсний приклад.
+spaces/*
+!spaces/example/
+
+.server.pid
+
+models/
+
+data/tts-cache/
+
+web/_shots/

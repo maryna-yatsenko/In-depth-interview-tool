@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Інтервʼю — дослідник</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body class="admin">
+  <header class="topbar">
+    <strong>Інтервʼю</strong>
+    <span class="muted">панель дослідника</span>
+    <span id="save-flash" class="flash"></span>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <span>Простори</span>
+        <button id="btn-new-space" class="ghost small">+ новий</button>
+      </div>
+      <form id="new-space-form" class="new-space hidden">
+        <label>Ключ (латиницею)
+          <input id="new-space-key" type="text" placeholder="my-research" autocomplete="off">
+        </label>
+        <label>Назва
+          <input id="new-space-title" type="text" placeholder="Як люди обирають…" autocomplete="off">
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary small">Створити</button>
+          <button type="button" id="btn-cancel-space" class="ghost small">Скасувати</button>
+        </div>
+        <p id="new-space-error" class="error-text"></p>
+      </form>
+
+      <ul id="space-list" class="space-list"></ul>
+      <p class="muted tiny" id="root-path"></p>
+    </aside>
+
+    <main class="content">
+      <nav class="tabs">
+        <button class="tab active" data-tab="guide">Гайд</button>
+        <button class="tab" data-tab="space">Простір</button>
+        <button class="tab" data-tab="phrases">Репліки</button>
+        <button class="tab" data-tab="runs">Інтервʼю</button>
+      </nav>
+
+      <!-- Гайд -->
+      <section id="tab-guide" class="tab-panel">
+        <div class="row">
+          <label>Гайд
+            <select id="guide-select"></select>
+          </label>
+          <label>Ліміт реплік
+            <input id="guide-max-turns" type="number" min="4" max="200">
+          </label>
+        </div>
+
+        <label class="block">Мета дослідження
+          <textarea id="guide-goal" rows="2"
+            placeholder="Що саме треба зрозуміти. Не «дослідити користувачів», а конкретне питання."></textarea>
+        </label>
+
+        <label class="block">Перше питання
+          <textarea id="guide-opening" rows="2"
+            placeholder="Однакове для всіх респондентів — воно задає рамку розмови."></textarea>
+        </label>
+
+        <label class="block">Завершення
+          <textarea id="guide-closing" rows="2"
+            placeholder="Подяка без резюме: резюме — це вже інтерпретація."></textarea>
+        </label>
+
+        <div class="section-head">
+          <h2>Теми</h2>
+          <button id="btn-add-topic" class="ghost small">+ тема</button>
+        </div>
+        <p class="muted tiny">«Що треба зʼясувати» — це не текст питання. Інтервʼюер
+           формулює сам; список — про зміст, не про слова.</p>
+        <div id="topics"></div>
+
+        <div class="actions sticky">
+          <button id="btn-save-guide" class="primary">Зберегти гайд</button>
+          <span id="guide-error" class="error-text"></span>
+        </div>
+      </section>
+
+      <!-- Простір -->
+      <section id="tab-space" class="tab-panel hidden">
+        <div class="row">
+          <label>Назва
+            <input id="space-title" type="text">
+          </label>
+          <label>Мови (через кому)
+            <input id="space-languages" type="text" placeholder="uk, ru">
+          </label>
+        </div>
+
+        <div class="row">
+          <label>Звертання
+            <select id="space-address"><option value="ви">ви</option><option value="ти">ти</option></select>
+          </label>
+          <label>Тон
+            <input id="space-tone" type="text" placeholder="нейтральний, стриманий">
+          </label>
+        </div>
+
+        <label class="block">Як інтервʼюер представляється
+          <textarea id="space-intro" rows="3"></textarea>
+        </label>
+
+        <label class="block">Лексика домену — по одному терміну на рядок
+          <textarea id="space-vocab" rows="4"></textarea>
+        </label>
+        <p class="muted tiny">Це щоб інтервʼюер <em>розумів</em> респондента. Уживати
+           першим ці слова йому заборонено — перевірка в коді відхилить репліку.</p>
+
+        <label class="block">Ніколи не питати про — по одному рядку
+          <textarea id="space-never" rows="3"></textarea>
+        </label>
+
+        <label class="check">
+          <input id="space-deidentify" type="checkbox">
+          Вичищати персональні дані з транскрипту
+        </label>
+
+        <label class="block">Шаблони маскування — по одному на рядок: <code>назва | регулярка | замінник</code>
+          <textarea id="space-patterns" rows="4" spellcheck="false"
+            placeholder="номер_справи | \bсправа\s+№?\s*[\d/-]{6,} | [НОМЕР СПРАВИ]"></textarea>
+        </label>
+        <p class="muted tiny">Вбудовані шаблони (пошта, посилання, телефон із дужками
+           чи дефісами, 8+ цифр підряд) працюють завжди. Тут — формати <em>твого</em>
+           домену: код їх не вигадує, бо вигаданий формат створює відчуття захисту
+           там, де його немає. Регулярка з помилкою не збережеться.</p>
+
+        <label class="check">
+          <input id="space-ready" type="checkbox">
+          <span>Готовий до інтервʼю <span class="muted tiny">— поки не позначено, інтервʼю не стартує</span></span>
+        </label>
+
+        <label class="block">Текст згоди
+          <textarea id="space-consent" rows="3"></textarea>
+        </label>
+
+        <label class="block">Розділи звіту — по одному рядку
+          <textarea id="space-report" rows="4"></textarea>
+        </label>
+
+        <div class="section-head">
+          <h2>Голос інтервʼюера</h2>
+          <span id="voice-count" class="muted tiny"></span>
+        </div>
+
+        <label>Провайдер озвучення
+          <select id="space-tts-provider">
+            <option value="piper">Piper — локально, 3 голоси, синтез &lt;1 с</option>
+            <option value="espnet">ESPnet — локально, 5 голосів, синтез ≈2 с</option>
+            <option value="browser">Браузер — старий системний голос</option>
+            <option value="none">Без озвучення</option>
+          </select>
+        </label>
+        <p class="muted tiny">Перемикання діє після «Зберегти простір» — сервер
+           перезбирає провайдера наживо, без перезапуску. ESPnet тримає модель у
+           памʼяті й кешує фіксовані репліки, тому відкриття гайда звучить одразу,
+           а нові уточнення синтезуються ≈2 с.</p>
+        <p class="muted tiny">Список — це те, що реально є в цьому браузері.
+           Натисни ▶, щоб почути. У різних браузерах набір різний: Chrome додає
+           до системних голосів свої серверні, Electron і Safari показують лише
+           системні. Тому перевіряй у тому браузері, у якому проходитимуть інтервʼю.</p>
+        <div id="voice-list" class="voice-list"></div>
+
+        <!-- Налаштування браузерного синтезу -->
+        <div id="tuning-browser">
+          <div class="row">
+            <label>Швидкість <span id="rate-value" class="muted"></span>
+              <input id="space-rate" type="range" min="0.7" max="1.2" step="0.01">
+            </label>
+            <label>Висота тону <span id="pitch-value" class="muted"></span>
+              <input id="space-pitch" type="range" min="0.6" max="1.4" step="0.01">
+            </label>
+          </div>
+          <label>Пауза між фразами, мс
+            <input id="space-gap" type="number" min="0" max="600" step="10">
+          </label>
+        </div>
+
+        <!-- Налаштування локальної нейронної моделі: інші параметри, ніж у браузера -->
+        <div id="tuning-server" class="hidden">
+          <div class="row">
+            <label>Темп <span id="length-value" class="muted"></span>
+              <span class="muted tiny">більше = повільніше й спокійніше</span>
+              <input id="space-length" type="range" min="0.85" max="1.35" step="0.01">
+            </label>
+            <label>Пауза між реченнями, с <span id="silence-value" class="muted"></span>
+              <input id="space-silence" type="range" min="0" max="1" step="0.05">
+            </label>
+          </div>
+
+          <label class="check">
+            <input id="space-stress" type="checkbox">
+            <span>Ставити наголоси
+              <span class="muted tiny">— головне для української вимови; модель навчена їх читати</span>
+            </span>
+          </label>
+
+          <label>Живість голосу
+            <select id="space-noise">
+              <option value="">жива (кожному респонденту трохи інакше, розкид ≈0,9 с)</option>
+              <option value="0.35">помірна (розкид ≈0,26 с)</option>
+              <option value="0">стабільна (усім байт-у-байт однаково, але пласкіше)</option>
+            </select>
+          </label>
+        </div>
+
+        <label>Репертуар інтервʼюера
+          <select id="space-repertoire">
+            <option value="free">вільний — модель формулює питання сама (синтез)</option>
+            <option value="bank">банк — вибирає з реплік, записаних голосом</option>
+          </select>
+        </label>
+        <p class="muted tiny">У режимі банку синтез не використовується взагалі.
+           Записи робляться у вкладці «Репліки»; поки банк неповний, інтервʼю не
+           почнеться, і панель скаже, чого саме не хватає.</p>
+
+        <label class="check">
+          <input id="space-autoplay" type="checkbox">
+          <span>Озвучувати питання автоматично
+            <span class="muted tiny">— за замовчуванням вимкнено: питання
+            показується текстом, а голос вмикає сам респондент кнопкою</span>
+          </span>
+        </label>
+
+        <label>Режим інтерфейсу
+          <select id="space-mode">
+            <option value="voice">лише голос (без поля введення)</option>
+            <option value="text">текст (з мікрофоном як опцією)</option>
+          </select>
+        </label>
+
+        <div class="actions" style="margin-bottom:14px">
+          <button type="button" id="btn-try-voice" class="ghost small">▶ Прослухати з цими налаштуваннями</button>
+          <span id="tuning-note" class="muted tiny"></span>
+        </div>
+
+        <div class="row">
+          <label>Акцентний колір
+            <input id="space-accent" type="text" placeholder="#2f6f4f">
+          </label>
+          <label>Заголовок сторінки
+            <input id="space-page-title" type="text">
+          </label>
+        </div>
+
+        <div class="actions sticky">
+          <button id="btn-save-space" class="primary">Зберегти простір</button>
+          <span id="space-error" class="error-text"></span>
+        </div>
+      </section>
+
+      <!-- Банк реплік -->
+      <section id="tab-phrases" class="tab-panel hidden">
+        <div id="bank-gaps" class="gaps hidden"></div>
+
+        <p class="muted tiny">Інтервʼюер не формулює питання — він вибирає з цього
+           набору. Тому всі респонденти чують буквально однакові формулювання, і
+           навідне питання не може виникнути за побудовою. Записуй своїм голосом:
+           це і найкраща якість, і нуль затримки.</p>
+
+        <div class="section-head">
+          <h2>Репліки</h2>
+          <button id="btn-add-phrase" class="ghost small">+ репліка</button>
+        </div>
+        <div id="phrase-list"></div>
+
+        <div class="actions sticky">
+          <button id="btn-save-phrases" class="primary">Зберегти тексти</button>
+          <span id="phrases-error" class="error-text"></span>
+        </div>
+      </section>
+
+      <!-- Інтервʼю -->
+      <section id="tab-runs" class="tab-panel hidden">
+        <div id="runs-list"></div>
+        <div id="transcript"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/audio.js"></script>
+  <script src="/phrases.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>
