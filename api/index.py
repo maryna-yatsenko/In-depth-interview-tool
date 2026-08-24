@@ -48,6 +48,11 @@ store = SessionStore(space, guide, llm_cfg, bank_provider)
 # бандл, і простори, створені лише в Postgres.
 admin_root = _SPACES_ROOT
 
-# Ім'я `handler` — те, що Vercel шукає в файлі як точку входу для
-# BaseHTTPRequestHandler-стилю Python-функцій.
-handler = make_handler(space, guide, llm_cfg, store, admin_root, holder, bank_provider)
+# Vercel шукає в файлі САМЕ `class handler(...):` статично (без виконання
+# коду) — присвоєння `handler = make_handler(...)` цьому не відповідає, хоч
+# і працює однаково в Python. Тому клас, що успадковує результат фабрики.
+_Handler = make_handler(space, guide, llm_cfg, store, admin_root, holder, bank_provider)
+
+
+class handler(_Handler):
+    pass

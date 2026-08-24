@@ -1,0 +1,10 @@
+.venv
+.venv-espnet
+models
+data
+tests
+docs
+.git
+__pycache__
+*.pyc
+.DS_Store

@@ -1,0 +1,18 @@
+# Залежності лише для локальної розробки (голос mlx/piper/espnet). Vercel
+# цей файл не читає — див. requirements.txt для того, що йде в деплой.
+# Встановлювати так само, як описано в README.md (piper — окремо, наголоси
+# без залежностей, щоб не тягнути stanza/torch):
+#
+#   .venv/bin/pip install piper-tts
+#   .venv/bin/pip install --no-deps ukrainian-word-stress
+#   .venv/bin/pip install marisa-trie
+
+# Приємний український голос локально й безкоштовно (три голоси, є чоловічий).
+# Модель кладеться в models/ окремо, у git не їде (73 МБ) — див. README.
+piper-tts>=1.7.0
+
+# Наголоси — головний важіль української вимови: модель навчена їх читати.
+# Ставити БЕЗ залежностей (--no-deps) + marisa-trie: інакше тягне stanza й
+# PyTorch на ~2 ГБ, а словникового режиму для нас досить.
+ukrainian-word-stress>=2.1.0
+marisa-trie>=1.1.0

@@ -24,3 +24,5 @@ web/_shots/
 
 # Службовий lock-файл сесії Claude Code — не проєктний код.
 .claude/scheduled_tasks.lock
+.vercel
+.env*
