@@ -15,14 +15,82 @@ import os
 import re
 import shutil
 import tempfile
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.phrases import KINDS, PhraseError, load_bank, save_bank
 from ..config.space import ConfigError, load_guide, load_space
 from ..interview import guard
+from ..storage import db as store_db
 from ..storage import local as store_files
 
 KEY_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
+
+
+def _on_postgres() -> bool:
+    """На Vercel код деплою незмінний під час роботи — правки з адмінки не
+    можуть лишитись на диску між запитами. Тому там конфіги читаються й
+    пишуться через config_overrides у Postgres, а файли в репозиторії
+    лишаються лише початковим наповненням (побачити його ще раз можна,
+    видаливши відповідний рядок у базі — інтерфейсу для цього поки нема,
+    це свідомо відкладено, див. план міграції)."""
+    return os.environ.get("STORAGE_BACKEND") == "postgres"
+
+
+def _rel_path(root: str, space_key: str, path: str) -> str:
+    return os.path.relpath(path, os.path.join(root, space_key)).replace(os.sep, "/")
+
+
+def _read_bytes(root: str, space_key: str, path: str) -> Optional[bytes]:
+    """Спершу перевизначення з Postgres (якщо колись редагували на живому
+    сайті), інакше — файл із репозиторію. Локально (без STORAGE_BACKEND)
+    завжди файл, як і раніше."""
+    if _on_postgres():
+        content = store_db.get_config_override(space_key, _rel_path(root, space_key, path))
+        if content is not None:
+            return content
+    if not os.path.isfile(path):
+        return None
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def _write_bytes(root: str, space_key: str, path: str, content: bytes) -> None:
+    if _on_postgres():
+        store_db.put_config_override(space_key, _rel_path(root, space_key, path), content)
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as fh:
+        fh.write(content)
+    os.replace(tmp, path)
+
+
+def _load_json_aware(root: str, space_key: str, path: str):
+    """Сирий JSON — байдуже, рядком у Postgres чи файлом у репозиторії.
+    Для готових обʼєктів (SpaceConfig/Guide) є _load_validated_aware — тут
+    лише те, що адмінка показує назад у формі, без валідації."""
+    content = _read_bytes(root, space_key, path)
+    if content is None:
+        return None
+    return json.loads(content.decode("utf-8"))
+
+
+def _load_validated_aware(root: str, space_key: str, path: str, loader):
+    """Те саме, що завантажувач (`load_space`/`load_guide`) робить із
+    файлом, — але вміст може лежати в config_overrides, а не на диску.
+    Матеріалізуємо у тимчасовий файл, бо самі завантажувачі й тести на них
+    свідомо лишились «шлях → дані», без жодної згадки про Postgres."""
+    content = _read_bytes(root, space_key, path)
+    if content is None:
+        raise ConfigError("%s не знайдено" % os.path.basename(path))
+    fd, tmp = tempfile.mkstemp(suffix=".json")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(content)
+        return loader(tmp)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 class AdminError(Exception):
@@ -42,13 +110,23 @@ def _check_key(key: str, what: str) -> str:
 
 def _space_dir(root: str, space_key: str) -> str:
     path = os.path.join(root, _check_key(space_key, "простору"))
-    if not os.path.isdir(path):
-        raise AdminError("Простору '%s' не існує" % space_key, 404)
-    return path
+    if os.path.isdir(path):
+        return path
+    # Простір, створений через адмінку на живому сайті, не має локальної
+    # теки взагалі — код деплою незмінний. Існує, якщо для нього є хоч
+    # один рядок у config_overrides.
+    if _on_postgres() and store_db.list_config_override_paths(space_key):
+        return path
+    raise AdminError("Простору '%s' не існує" % space_key, 404)
 
 
-def _write_validated(path: str, data: Dict[str, Any], validator) -> None:
-    """Валідація на копії, і тільки потім заміна файла."""
+def _write_validated(root: str, space_key: str, path: str, data: Dict[str, Any],
+                      validator) -> None:
+    """Валідація на копії, і тільки потім — заміна файла (локально) або
+    рядка в config_overrides (на Vercel). Валідатору однаково потрібен
+    справжній файл на диску (він читає його сам), тому тимчасовий файл
+    лишається тимчасовим файлом незалежно від бекенду — лише останній крок
+    («куди піде вже перевірений вміст») різниться."""
     fd, tmp = tempfile.mkstemp(suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -57,7 +135,9 @@ def _write_validated(path: str, data: Dict[str, Any], validator) -> None:
             validator(tmp)
         except ConfigError as exc:
             raise AdminError(str(exc))
-        shutil.move(tmp, path)
+        with open(tmp, "rb") as fh:
+            content = fh.read()
+        _write_bytes(root, space_key, path, content)
         tmp = None
     finally:
         if tmp and os.path.exists(tmp):
@@ -67,16 +147,21 @@ def _write_validated(path: str, data: Dict[str, Any], validator) -> None:
 # ── читання ──────────────────────────────────────────────────────────────
 
 def list_spaces(root: str) -> List[Dict[str, Any]]:
-    if not os.path.isdir(root):
+    names = set(os.listdir(root)) if os.path.isdir(root) else set()
+    if _on_postgres():
+        # Простір, створений через адмінку на живому сайті, не лежить у
+        # коді деплою взагалі — без цього його не було б видно в переліку.
+        names |= set(store_db.list_config_override_spaces())
+    if not names:
         return []
     items = []
-    for name in sorted(os.listdir(root)):
+    for name in sorted(names):
         space_path = os.path.join(root, name, "space.json")
-        if not os.path.isfile(space_path):
+        if _read_bytes(root, name, space_path) is None:
             continue
         entry = {"key": name, "title": name, "guides": [], "error": None, "draft": False}
         try:
-            space = load_space(space_path)
+            space = _load_validated_aware(root, name, space_path, load_space)
             entry["title"] = space.title
             entry["languages"] = space.languages
             entry["draft"] = space.draft
@@ -85,33 +170,40 @@ def list_spaces(root: str) -> List[Dict[str, Any]]:
             # дослідник шукатиме, куди зник його конфіг.
             entry["error"] = str(exc)
         guides_dir = os.path.join(root, name, "guides")
+        guide_names = set()
         if os.path.isdir(guides_dir):
-            entry["guides"] = sorted(f[:-5] for f in os.listdir(guides_dir) if f.endswith(".json"))
+            guide_names |= {f[:-5] for f in os.listdir(guides_dir) if f.endswith(".json")}
+        if _on_postgres():
+            guide_names |= {
+                p[len("guides/"):-5] for p in store_db.list_config_override_paths(name)
+                if p.startswith("guides/") and p.endswith(".json")
+            }
+        entry["guides"] = sorted(guide_names)
         items.append(entry)
     return items
 
 
 def read_space(root: str, space_key: str) -> Dict[str, Any]:
-    path = os.path.join(_space_dir(root, space_key), "space.json")
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    _space_dir(root, space_key)
+    path = os.path.join(root, space_key, "space.json")
+    data = _load_json_aware(root, space_key, path)
+    if data is None:
+        raise AdminError("Простору '%s' не існує" % space_key, 404)
+    return data
 
 
 def read_guide(root: str, space_key: str, guide_key: str) -> Dict[str, Any]:
-    path = os.path.join(
-        _space_dir(root, space_key), "guides", "%s.json" % _check_key(guide_key, "гайда")
-    )
-    if not os.path.isfile(path):
+    _space_dir(root, space_key)
+    path = os.path.join(root, space_key, "guides", "%s.json" % _check_key(guide_key, "гайда"))
+    data = _load_json_aware(root, space_key, path)
+    if data is None:
         raise AdminError("Гайда '%s' не існує" % guide_key, 404)
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+    return data
 
 
 def read_transcript(session_id: str) -> Dict[str, Any]:
-    path = os.path.join(store_files.DEFAULT_DIR, "%s.json" % session_id)
-    try:
-        data = store_files.load_session(path)
-    except (OSError, ValueError):
+    data = store_files.load_session_by_id(session_id)
+    if data is None:
         raise AdminError("Транскрипт не знайдено", 404)
     return data
 
@@ -119,46 +211,62 @@ def read_transcript(session_id: str) -> Dict[str, Any]:
 # ── запис ────────────────────────────────────────────────────────────────
 
 def write_space(root: str, space_key: str, data: Dict[str, Any]) -> Dict[str, Any]:
-    path = os.path.join(_space_dir(root, space_key), "space.json")
+    space_dir = _space_dir(root, space_key)
+    path = os.path.join(space_dir, "space.json")
     data = dict(data or {})
     data["key"] = space_key
-    _write_validated(path, data, load_space)
+    _write_validated(root, space_key, path, data, load_space)
     return {"ok": True, "key": space_key}
 
 
 def write_guide(root: str, space_key: str, guide_key: str, data: Dict[str, Any]) -> Dict[str, Any]:
-    guides_dir = os.path.join(_space_dir(root, space_key), "guides")
-    os.makedirs(guides_dir, exist_ok=True)
+    space_dir = _space_dir(root, space_key)
+    guides_dir = os.path.join(space_dir, "guides")
+    if not _on_postgres():
+        # На Vercel код деплою лише читається — теки там не створюємо, і не
+        # треба: config_overrides не має «тек» узагалі, лише шляхи-рядки.
+        os.makedirs(guides_dir, exist_ok=True)
     _check_key(guide_key, "гайда")
     data = dict(data or {})
     data["key"] = guide_key
-    _write_validated(os.path.join(guides_dir, "%s.json" % guide_key), data, load_guide)
+    _write_validated(root, space_key, os.path.join(guides_dir, "%s.json" % guide_key),
+                      data, load_guide)
     return {"ok": True, "space": space_key, "guide": guide_key}
 
 
 def create_space(root: str, space_key: str, title: str, template: str = "example") -> Dict[str, Any]:
     _check_key(space_key, "простору")
     target = os.path.join(root, space_key)
-    if os.path.exists(target):
+    if os.path.isdir(target) or (_on_postgres() and store_db.list_config_override_paths(space_key)):
         raise AdminError("Простір '%s' уже існує" % space_key, 409)
     source = os.path.join(root, _check_key(template, "шаблону"))
     if not os.path.isdir(source):
         raise AdminError("Шаблон '%s' не знайдено" % template, 404)
 
-    shutil.copytree(source, target)
-    _blank_domain_content(target, space_key, title or space_key)
+    if _on_postgres():
+        # Немає shutil.copytree: код деплою на Vercel незмінний під час
+        # роботи. Копіюємо вміст шаблону в config_overrides рядок за рядком
+        # — читаємо його ще з бандла (це можна), пишемо вже в базу.
+        for dirpath, _dirs, files in os.walk(source):
+            for filename in files:
+                src_path = os.path.join(dirpath, filename)
+                rel = _rel_path(root, template, src_path)
+                with open(src_path, "rb") as fh:
+                    store_db.put_config_override(space_key, rel, fh.read())
+    else:
+        shutil.copytree(source, target)
+    _blank_domain_content(root, space_key, title or space_key)
     return {"ok": True, "key": space_key, "draft": True}
 
 
-def _blank_domain_content(target: str, space_key: str, title: str) -> None:
+def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     """Структуру шаблону лишаємо, доменний зміст — прибираємо.
 
     Інакше новий простір «Онбординг» вітає респондента розповіддю про
     велосипеди з прикладу — і це виявляється вже після інтервʼю.
     """
-    space_path = os.path.join(target, "space.json")
-    with open(space_path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    space_path = os.path.join(root, space_key, "space.json")
+    data = _load_json_aware(root, space_key, space_path) or {}
     data["key"] = space_key
     data["title"] = title
     data["draft"] = True
@@ -175,15 +283,19 @@ def _blank_domain_content(target: str, space_key: str, title: str) -> None:
     branding = dict(data.get("branding") or {})
     branding["page_title"] = title
     data["branding"] = branding
-    _write_validated(space_path, data, load_space)
+    _write_validated(root, space_key, space_path, data, load_space)
 
-    guides_dir = os.path.join(target, "guides")
-    for name in sorted(os.listdir(guides_dir)):
-        if not name.endswith(".json"):
-            continue
+    guides_dir = os.path.join(root, space_key, "guides")
+    if _on_postgres():
+        guide_names = sorted(
+            os.path.basename(p) for p in store_db.list_config_override_paths(space_key)
+            if p.startswith("guides/") and p.endswith(".json")
+        )
+    else:
+        guide_names = sorted(n for n in os.listdir(guides_dir) if n.endswith(".json"))
+    for name in guide_names:
         path = os.path.join(guides_dir, name)
-        with open(path, "r", encoding="utf-8") as fh:
-            guide = json.load(fh)
+        guide = _load_json_aware(root, space_key, path) or {}
         guide.pop("_comment", None)
         guide["goal"] = "TODO: що саме треба зрозуміти"
         guide["opening"] = "TODO: перше питання — однакове для всіх респондентів"
@@ -194,10 +306,15 @@ def _blank_domain_content(target: str, space_key: str, title: str) -> None:
             "must_learn": ["TODO: що треба зʼясувати"],
             "max_probes": 4,
         }]
-        _write_validated(path, guide, load_guide)
+        _write_validated(root, space_key, path, guide, load_guide)
 
 
 # ── банк реплік ──────────────────────────────────────────────────────────
+#
+# ⚠️ Свідомо лишається лише на локальному диску — не Postgres-aware, як усе
+# вище. `repertoire: "bank"` не використовує жоден задеплоєний простір
+# (обидва — "free"), тож на Vercel цей розділ функціонально недоступний,
+# доки хтось не захоче саме банк реплік у хмарі. Тоді і варто перенести.
 
 AUDIO_EXT = {
     "audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".mp4",

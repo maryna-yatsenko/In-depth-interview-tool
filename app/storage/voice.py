@@ -20,7 +20,15 @@
 import os
 from typing import List, Optional
 
+from . import db as _db
+
 VOICE_DIR = os.path.join(os.getcwd(), "data", "voice")
+
+
+def _on_postgres() -> bool:
+    """Той самий перемикач, що й у local.py: на Vercel диска, який
+    переживає між запитами, немає взагалі."""
+    return os.environ.get("STORAGE_BACKEND") == "postgres"
 
 # 25 МБ на один запис. Opus у браузері дає ~20 кБ/с, тобто це приблизно 20
 # хвилин безперервного мовлення на ОДНУ відповідь — межа не тисне на людину,
@@ -78,6 +86,12 @@ def save_clip(session_id: str, data: bytes, content_type: str,
         raise VoiceError("Запис завеликий: %d байтів (межа %d)"
                          % (len(data), MAX_CLIP_BYTES), status=413)
     ext = extension_for(content_type)
+    if _on_postgres():
+        sid = _safe_id(session_id)
+        number = _db.next_voice_clip_number(sid)
+        name = "%03d%s" % (number, ext)
+        _db.save_voice_clip(sid, name, content_type, data)
+        return name
     directory = session_dir(session_id, root)
     os.makedirs(directory, exist_ok=True)
     number = len(os.listdir(directory)) + 1
@@ -105,6 +119,12 @@ def clip_path(session_id: str, name: str, root: Optional[str] = None) -> str:
 
 
 def read_clip(session_id: str, name: str, root: Optional[str] = None) -> bytes:
+    if _on_postgres():
+        clip_path(session_id, name)  # та сама перевірка імені, результат не потрібен
+        data = _db.read_voice_clip(_safe_id(session_id), name)
+        if data is None:
+            raise VoiceError("Запис не знайдено", status=404)
+        return data
     path = clip_path(session_id, name, root)
     if not os.path.isfile(path):
         raise VoiceError("Запис не знайдено", status=404)
@@ -115,6 +135,15 @@ def read_clip(session_id: str, name: str, root: Optional[str] = None) -> bytes:
 def delete_clips(session_id: str, names: List[str],
                  root: Optional[str] = None) -> int:
     """Видаляє записи. «Сказати заново» мусить прибирати їх із диска."""
+    if _on_postgres():
+        safe_names = []
+        for name in names or []:
+            try:
+                clip_path(session_id, name)
+            except VoiceError:
+                continue
+            safe_names.append(name)
+        return _db.delete_voice_clips(_safe_id(session_id), safe_names)
     removed = 0
     for name in names or []:
         try:
@@ -128,6 +157,8 @@ def delete_clips(session_id: str, names: List[str],
 
 
 def list_clips(session_id: str, root: Optional[str] = None) -> List[str]:
+    if _on_postgres():
+        return _db.list_voice_clips(_safe_id(session_id))
     directory = session_dir(session_id, root)
     if not os.path.isdir(directory):
         return []

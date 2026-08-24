@@ -13,8 +13,17 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
+from . import db as _db
+
 DEFAULT_DIR = os.path.join(os.getcwd(), "data", "sessions")
 LIVE_DIR = os.path.join(os.getcwd(), "data", "live")
+
+
+def _on_postgres() -> bool:
+    """Задеплоєна версія (Vercel) не має файлової системи, яка переживає між
+    запитами — там `STORAGE_BACKEND=postgres` перемикає ці самі функції на
+    app/storage/db.py. Локально змінна не задана, і нижче нічого не змінюється."""
+    return os.environ.get("STORAGE_BACKEND") == "postgres"
 
 
 def _dir(directory: Optional[str], fallback_name: str) -> str:
@@ -50,6 +59,8 @@ def _write_atomic(path: str, payload: Dict[str, Any]) -> None:
 # ── завершені транскрипти ────────────────────────────────────────────────
 
 def save_session(payload: Dict[str, Any], directory: Optional[str] = None) -> str:
+    if _on_postgres():
+        return _db.save_session(payload)
     directory = _dir(directory, "sessions")
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, "%s.json" % _safe_id(payload["session_id"]))
@@ -60,12 +71,50 @@ def save_session(payload: Dict[str, Any], directory: Optional[str] = None) -> st
 
 
 def load_session(path: str) -> Dict[str, Any]:
+    """Приймає шлях до файлу — лишається робочим лише для локального диска.
+    На Postgres дані немає сенсу адресувати шляхом, тому там — load_session_by_id."""
     with open(path, "r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
+def load_session_by_id(session_id: str) -> Optional[Dict[str, Any]]:
+    """На відміну від load_session (шлях), тут — саме ідентифікатор, з
+    тим самим _safe_id, що й скрізь. Працює на обох бекендах."""
+    if _on_postgres():
+        return _db.load_session_by_id(session_id)
+    path = os.path.join(_dir(None, "sessions"), "%s.json" % _safe_id(session_id))
+    if not os.path.isfile(path):
+        return None
+    return load_session(path)
+
+
+def _summarize(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Короткі відомості про одне завершене інтервʼю — без вмісту реплік."""
+    return {
+        "session_id": data.get("session_id"),
+        "space": data.get("space"),
+        "guide": data.get("guide"),
+        "prompt_version": data.get("prompt_version"),
+        "started_at": data.get("started_at"),
+        "finished_at": data.get("finished_at"),
+        "completed": data.get("completed"),
+        "turns": len(data.get("turns") or []),
+        "topics_covered": len(data.get("topics_covered") or []),
+        "incidents": len(data.get("incidents") or []),
+        # Записи голосу — щоб дослідник бачив, які інтервʼю можна
+        # переслухати, не відкриваючи файл транскрипту.
+        "voice_consent": bool(data.get("voice_consent")),
+        "voice": [name for turn in (data.get("turns") or [])
+                  for name in (turn.get("voice") or [])],
+    }
+
+
 def list_sessions(directory: Optional[str] = None) -> List[Dict[str, Any]]:
     """Короткі відомості про завершені інтервʼю — для адмінки. Без вмісту реплік."""
+    if _on_postgres():
+        items = [_summarize(data) for data in _db.list_finished_sessions()]
+        items.sort(key=lambda item: item.get("started_at") or "", reverse=True)
+        return items
     directory = _dir(directory, "sessions")
     if not os.path.isdir(directory):
         return []
@@ -77,23 +126,7 @@ def list_sessions(directory: Optional[str] = None) -> List[Dict[str, Any]]:
             data = load_session(os.path.join(directory, name))
         except (ValueError, OSError):
             continue
-        items.append({
-            "session_id": data.get("session_id"),
-            "space": data.get("space"),
-            "guide": data.get("guide"),
-            "prompt_version": data.get("prompt_version"),
-            "started_at": data.get("started_at"),
-            "finished_at": data.get("finished_at"),
-            "completed": data.get("completed"),
-            "turns": len(data.get("turns") or []),
-            "topics_covered": len(data.get("topics_covered") or []),
-            "incidents": len(data.get("incidents") or []),
-            # Записи голосу — щоб дослідник бачив, які інтервʼю можна
-            # переслухати, не відкриваючи файл транскрипту.
-            "voice_consent": bool(data.get("voice_consent")),
-            "voice": [name for turn in (data.get("turns") or [])
-                      for name in (turn.get("voice") or [])],
-        })
+        items.append(_summarize(data))
     items.sort(key=lambda item: item.get("started_at") or "", reverse=True)
     return items
 
@@ -101,6 +134,8 @@ def list_sessions(directory: Optional[str] = None) -> List[Dict[str, Any]]:
 # ── стан незавершених ────────────────────────────────────────────────────
 
 def save_live(payload: Dict[str, Any], directory: Optional[str] = None) -> str:
+    if _on_postgres():
+        return _db.save_live(payload)
     directory = _dir(directory, "live")
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, "%s.json" % _safe_id(payload["session_id"]))
@@ -109,6 +144,8 @@ def save_live(payload: Dict[str, Any], directory: Optional[str] = None) -> str:
 
 
 def load_live(session_id: str, directory: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if _on_postgres():
+        return _db.load_live(session_id)
     directory = _dir(directory, "live")
     path = os.path.join(directory, "%s.json" % _safe_id(session_id))
     if not os.path.exists(path):
@@ -122,6 +159,9 @@ def load_live(session_id: str, directory: Optional[str] = None) -> Optional[Dict
 
 
 def drop_live(session_id: str, directory: Optional[str] = None) -> None:
+    if _on_postgres():
+        _db.drop_live(session_id)
+        return
     directory = _dir(directory, "live")
     path = os.path.join(directory, "%s.json" % _safe_id(session_id))
     if os.path.exists(path):

@@ -11,7 +11,11 @@ from .base import LLMProvider, ProviderError, TTSProvider
 
 
 def build_llm(cfg: Dict[str, Any]) -> LLMProvider:
-    provider = (cfg or {}).get("provider", "mock")
+    # На Vercel локальні провайдери (mlx) фізично не запускаються — окрема
+    # env-змінна дає задеплоєному оточенню свій провайдер БЕЗ дублювання
+    # space.json: той самий гайд лишається джерелом істини і локально, і в
+    # хмарі, лише LLM/TTS під капотом різні.
+    provider = os.environ.get("LLM_PROVIDER_OVERRIDE") or (cfg or {}).get("provider", "mock")
     if provider == "mock":
         from .llm_mock import MockLLM
 
@@ -42,7 +46,9 @@ def build_tts(cfg: Dict[str, Any]) -> Any:
     "browser" — не провайдер: синтез робить сам браузер респондента, серверу
     робити нічого. Тому None, а не заглушка.
     """
-    provider = (cfg or {}).get("provider", "none")
+    # Той самий принцип, що й у build_llm: env-змінна дає задеплоєному
+    # оточенню свій провайдер, не чіпаючи space.json.
+    provider = os.environ.get("TTS_PROVIDER_OVERRIDE") or (cfg or {}).get("provider", "none")
     if provider in ("none", "browser", None):
         return None
 
