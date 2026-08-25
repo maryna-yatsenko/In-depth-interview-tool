@@ -408,36 +408,8 @@ def make_handler(
             self.end_headers()
             self.wfile.write(audio)
 
-        def _upload_phrase_audio(self):
-            """Запис із мікрофона приходить бінарним тілом.
-
-            Обробляється ДО `_read_json`: той спожив би тіло, і від аудіо
-            лишились би байти, розібрані як зламаний JSON.
-            """
-            if not admin_root:
-                self._send_json({"error": "адмінка вимкнена"}, 404)
-                return
-            parsed = urllib.parse.urlparse(self.path)
-            query = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
-            length = int(self.headers.get("Content-Length") or 0)
-            data = self.rfile.read(length) if length else b""
-            try:
-                result = admin_api.save_phrase_audio(
-                    admin_root, query.get("space", ""), query.get("id", ""),
-                    self.headers.get("Content-Type", ""), data)
-            except admin_api.AdminError as exc:
-                self._send_json({"error": str(exc)}, exc.status)
-                return
-            except (OSError, PhraseError) as exc:
-                self._send_json({"error": str(exc)}, 400)
-                return
-            self._send_json(result)
-
         def do_POST(self):
             path = self.path.split("?")[0]
-            if path == "/api/admin/phrase/audio":
-                self._upload_phrase_audio()
-                return
             if path == "/api/voice":
                 # Так само бінарне тіло: _read_json спожив би аудіо й розібрав
                 # його як зламаний JSON.

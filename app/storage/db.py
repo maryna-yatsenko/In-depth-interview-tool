@@ -92,6 +92,13 @@ def ensure_schema() -> None:
                     PRIMARY KEY (space_key, path)
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS deleted_spaces (
+                    space_key TEXT PRIMARY KEY,
+                    deleted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    purged_at TIMESTAMPTZ
+                )
+            """)
         conn.commit()
     _SCHEMA_READY = True
 
@@ -290,6 +297,99 @@ def list_config_override_spaces() -> List[str]:
     return [row[0] for row in rows]
 
 
+# ── кошик (просторів, включно з тими, що приїхали в бандлі) ─────────────
+#
+# Видалити рядок з config_overrides не досить: `travel`/`example` лежать у
+# самому коді деплою, і `os.listdir()` знайшов би теку знов на наступному
+# запиті, навіть без жодного рядка в базі. Тому "видалено" тут — окремий
+# прапорець, а не спроба прибрати те, чого прибрати з диска на Vercel не
+# можна (він там незмінний). Список просторів просто ховає позначені ключі.
+
+def mark_space_deleted(space_key: str) -> None:
+    """У кошик. `purged_at` явно скидаємо: теоретично простір міг бути
+    видалений назавжди раніше під тим самим ключем, а тепер створений знов."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO deleted_spaces (space_key, deleted_at, purged_at) "
+                "VALUES (%s, now(), NULL) "
+                "ON CONFLICT (space_key) DO UPDATE SET deleted_at = now(), purged_at = NULL",
+                (space_key,),
+            )
+        conn.commit()
+
+
+def mark_space_purged(space_key: str) -> None:
+    """Видалено назавжди. Рядок НЕ прибираємо — інакше `travel`/`example`
+    зі свого ж бандла спливли б знову на наступному запиті."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE deleted_spaces SET purged_at = now() WHERE space_key = %s",
+                (space_key,),
+            )
+        conn.commit()
+
+
+def unmark_space_deleted(space_key: str) -> None:
+    """Відновлення — рядок прибираємо повністю, простір знов видимий як
+    звичайний. Викликач має сам не пускати сюди вже видалене назавжди."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM deleted_spaces WHERE space_key = %s", (space_key,))
+        conn.commit()
+
+
+def is_space_deleted(space_key: str) -> bool:
+    """І в кошику, і видалене назавжди — в обох випадках ховати зі списку."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM deleted_spaces WHERE space_key = %s", (space_key,))
+            return cur.fetchone() is not None
+
+
+def list_all_deleted_space_keys() -> List[str]:
+    """Усі ключі з тамбстоуна — і в кошику, і видалені назавжди. Для
+    основного списку просторів: сховати треба і те, й те. `list_deleted_spaces`
+    (лише кошик) тут не підходить — видалене назавжди знов спливло б."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT space_key FROM deleted_spaces")
+            rows = cur.fetchall()
+    return [row[0] for row in rows]
+
+
+def is_space_trashed(space_key: str) -> bool:
+    """Саме в кошику (можна відновити) — на відміну від `is_space_deleted`,
+    яке правдиве і для видаленого назавжди."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM deleted_spaces WHERE space_key = %s AND purged_at IS NULL",
+                (space_key,),
+            )
+            return cur.fetchone() is not None
+
+
+def list_deleted_spaces() -> List[Dict[str, Any]]:
+    """Лише кошик — те, що вже видалено назавжди, тут не показуємо."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT space_key, deleted_at FROM deleted_spaces "
+                "WHERE purged_at IS NULL ORDER BY deleted_at DESC"
+            )
+            rows = cur.fetchall()
+    return [{"key": row[0], "deleted_at": row[1].isoformat()} for row in rows]
+
+
 def list_config_override_paths(space_key: str) -> List[str]:
     ensure_schema()
     with _connect() as conn:
@@ -311,3 +411,37 @@ def delete_config_override(space_key: str, path: str) -> None:
                 (space_key, path),
             )
         conn.commit()
+
+
+def delete_config_overrides(space_key: str) -> None:
+    """Прибирає всі перевизначення конфігу разом — дослідник видалив
+    інтервʼю в панелі, а не один файл усередині нього."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM config_overrides WHERE space_key = %s", (space_key,))
+        conn.commit()
+
+
+# ── видалення зібраних даних ─────────────────────────────────────────────
+
+def delete_sessions_for_space(space_key: str) -> int:
+    """Видаляє завершені й незавершені сесії цього простору разом із
+    голосовими записами. Повертає кількість видалених завершених сесій —
+    для підтвердження в панелі."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM finished_sessions WHERE data->>'space' = %s "
+                "UNION SELECT id FROM live_sessions WHERE data->>'space' = %s",
+                (space_key, space_key),
+            )
+            ids = [row[0] for row in cur.fetchall()]
+            if ids:
+                cur.execute("DELETE FROM voice_clips WHERE session_id = ANY(%s)", (ids,))
+            cur.execute("DELETE FROM live_sessions WHERE data->>'space' = %s", (space_key,))
+            cur.execute("DELETE FROM finished_sessions WHERE data->>'space' = %s", (space_key,))
+            removed = cur.rowcount
+        conn.commit()
+    return removed

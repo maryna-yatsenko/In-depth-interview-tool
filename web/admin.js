@@ -10,10 +10,7 @@
 
   var el = function (id) { return document.getElementById(id); };
   var state = { spaces: [], space: null, guide: null, guideData: null, spaceData: null,
-                voiceName: "", speaker: null, ttsProvider: null, preview: null };
-
-  var SAMPLE = "Розкажіть, будь ласка, про останній випадок, коли це сталося. " +
-               "Що ви зробили далі?";
+                trash: [], trashOpen: false };
 
   /* ── допоміжне ─────────────────────────────────────────────────────── */
 
@@ -107,7 +104,7 @@
 
   function selectSpace(key) {
     state.space = key;
-    if (window.ITPhrases) window.ITPhrases.init(key);
+    toggleDeleteConfirm(false);
     renderSpaces();
     var space = state.spaces.filter(function (s) { return s.key === key; })[0];
     var select = el("guide-select");
@@ -121,7 +118,7 @@
 
     loadSpaceData();
     if (space.guides && space.guides.length) loadGuide(space.guides[0]);
-    else { state.guideData = null; el("topics").innerHTML = "<p class='muted'>У цьому просторі немає гайда.</p>"; }
+    else { state.guideData = null; el("guide-topics").value = ""; }
   }
 
   /* ── гайд ──────────────────────────────────────────────────────────── */
@@ -136,53 +133,64 @@
       el("guide-opening").value = data.opening || "";
       el("guide-closing").value = data.closing || "";
       el("guide-max-turns").value = data.max_turns || 30;
-      renderTopics(data.topics || []);
+      el("guide-topics").value = topicsToText(data.topics || []);
       el("guide-error").textContent = "";
     }).catch(function (err) { el("guide-error").textContent = err.message; });
   }
 
-  function topicNode(topic) {
-    var wrap = document.createElement("div");
-    wrap.className = "topic";
+  /* Теми — один текстовий блок замість окремих полів на кожну: абзац =
+     тема, перший рядок — назва, решта — пункти «що зʼясувати». Ключ (id)
+     не редагується руками — генерується за порядком абзаців, як і раніше
+     генерувався для нового простору («topic-1», «topic-2», …). Кількість
+     уточнень — необовʼязкове число в дужках після назви; без нього
+     лишається дефолт (4).
 
-    var head = document.createElement("div");
-    head.className = "topic-head";
-    head.innerHTML =
-      '<label>Назва теми<input type="text" data-field="title"></label>' +
-      '<label class="narrow">Ключ<input type="text" data-field="id"></label>' +
-      '<label class="narrow">Уточнень<input type="number" min="1" max="12" data-field="max_probes"></label>' +
-      '<button class="drop" title="Прибрати тему">✕</button>';
-    wrap.appendChild(head);
-
-    var learn = document.createElement("label");
-    learn.className = "block";
-    learn.innerHTML = "Що треба зʼясувати — по одному рядку" +
-      '<textarea rows="3" data-field="must_learn"></textarea>';
-    wrap.appendChild(learn);
-
-    wrap.querySelector('[data-field="title"]').value = topic.title || "";
-    wrap.querySelector('[data-field="id"]').value = topic.id || "";
-    wrap.querySelector('[data-field="max_probes"]').value = topic.max_probes || 4;
-    wrap.querySelector('[data-field="must_learn"]').value = lines.toText(topic.must_learn);
-
-    head.querySelector(".drop").addEventListener("click", function () { wrap.remove(); });
-    return wrap;
+     Гайд може мати поля, яких у цьому текстовому вигляді просто немає
+     (goal, ask_if_missed, ask_for_detail, shown_as, позначки needs_detail
+     на пункті) — їх і стара форма з окремими полями не показувала й не
+     редагувала. Щоб збереження текстом їх не змило, тему, чий текст не
+     змінився, повертаємо як є (з усіма її полями); лише реально
+     відредаговані рядки перетворюються на прості рядки без цих позначок.
+  */
+  function mustLearnText(item) {
+    return (item && typeof item === "object") ? (item.text || "") : (item || "");
   }
 
-  function renderTopics(topics) {
-    var host = el("topics");
-    host.innerHTML = "";
-    topics.forEach(function (topic) { host.appendChild(topicNode(topic)); });
+  function topicsToText(topics) {
+    return (topics || []).map(function (t) {
+      var probes = t.max_probes == null ? 4 : t.max_probes;
+      var head = (t.title || "") + " (" + probes + ")";
+      var body = (t.must_learn || []).map(mustLearnText);
+      return [head].concat(body).join("\n");
+    }).join("\n\n");
   }
 
-  function collectTopics() {
-    return Array.prototype.map.call(el("topics").querySelectorAll(".topic"), function (node) {
-      return {
-        id: node.querySelector('[data-field="id"]').value.trim(),
-        title: node.querySelector('[data-field="title"]').value.trim(),
-        max_probes: parseInt(node.querySelector('[data-field="max_probes"]').value, 10) || 4,
-        must_learn: lines.fromText(node.querySelector('[data-field="must_learn"]').value)
-      };
+  function topicsFromText(text) {
+    var original = (state.guideData && state.guideData.topics) || [];
+    var blocks = (text || "").split(/\n\s*\n/).map(function (block) {
+      return block.split("\n").map(function (s) { return s.trim(); })
+        .filter(function (s) { return s.length; });
+    }).filter(function (lines) { return lines.length; });
+
+    return blocks.map(function (lines, index) {
+      var head = lines[0];
+      var match = head.match(/^(.*)\((\d+)\)\s*$/);
+      var title = match ? match[1].trim() : head;
+      var probesFromText = match ? (parseInt(match[2], 10) || 4) : null;
+      var mustLearnLines = lines.slice(1);
+      var base = original[index] || {};
+
+      var baseText = (base.must_learn || []).map(mustLearnText);
+      var unchanged = base.title === title && baseText.length === mustLearnLines.length &&
+        baseText.every(function (t, i) { return t === mustLearnLines[i]; });
+
+      return Object.assign({}, base, {
+        id: base.id || ("topic-" + (index + 1)),
+        title: title,
+        must_learn: unchanged ? base.must_learn : mustLearnLines,
+        max_probes: probesFromText != null ? probesFromText
+          : (base.max_probes == null ? 4 : base.max_probes)
+      });
     });
   }
 
@@ -193,7 +201,7 @@
       opening: el("guide-opening").value.trim(),
       closing: el("guide-closing").value.trim(),
       max_turns: parseInt(el("guide-max-turns").value, 10) || 30,
-      topics: collectTopics()
+      topics: topicsFromText(el("guide-topics").value)
     });
     el("guide-error").textContent = "";
     post("/api/admin/guide", { space: state.space, guide: state.guide, data: payload })
@@ -221,56 +229,12 @@
       el("space-consent").value = (data.privacy || {}).consent_text || "";
       el("space-patterns").value = patternsToText((data.privacy || {}).patterns);
       el("space-report").value = lines.toText(data.report_sections);
-      var tts = (data.providers || {}).tts || {};
-      state.voiceName = tts.voice || "";
-      state.ttsConfigured = tts.provider || "browser";
-      el("space-tts-provider").value = tts.provider || "browser";
-      el("space-rate").value = tts.rate == null ? 0.97 : tts.rate;
-      el("space-pitch").value = tts.pitch == null ? 1.0 : tts.pitch;
-      el("space-gap").value = tts.gap == null ? 150 : tts.gap;
-      el("space-length").value = tts.length_scale == null ? 1.06 : tts.length_scale;
-      el("space-silence").value = tts.sentence_silence == null ? 0.4 : tts.sentence_silence;
-      el("space-stress").checked = tts.add_stress !== false;
-      el("space-noise").value = tts.noise_scale == null ? "" : String(tts.noise_scale);
-      toggleTuning(tts.provider || "browser");
       el("space-mode").value = ((data.interface || {}).mode) || "text";
       el("space-autoplay").checked = !!((data.interface || {}).autoplay);
-      el("space-repertoire").value = data.repertoire || "free";
-      showSliderValues();
-      renderVoices();
       el("space-accent").value = (data.branding || {}).accent || "";
       el("space-page-title").value = (data.branding || {}).page_title || "";
       el("space-error").textContent = "";
     }).catch(function (err) { el("space-error").textContent = err.message; });
-  }
-
-  /* Зберігаємо тільки ті поля, які стосуються обраного провайдера: змішувати
-     браузерні rate/pitch з піперівськими length_scale у одному обʼєкті — шлях
-     до конфігу, у якому не зрозуміло, що на що впливає. */
-  function buildTtsConfig(base) {
-    var config = Object.assign({}, base);
-    var provider = el("space-tts-provider").value;
-    config.provider = provider;
-    config.voice = state.voiceName || "";
-    var server = provider !== "browser" && provider !== "none";
-    if (server) {
-      var tuning = serverTuning();
-      config.length_scale = tuning.length_scale;
-      config.sentence_silence = tuning.sentence_silence;
-      config.add_stress = tuning.add_stress;
-      if (tuning.noise_scale === undefined) {
-        delete config.noise_scale;
-        delete config.noise_w_scale;
-      } else {
-        config.noise_scale = tuning.noise_scale;
-        config.noise_w_scale = tuning.noise_w_scale;
-      }
-    } else {
-      config.rate = parseFloat(el("space-rate").value) || 0.97;
-      config.pitch = parseFloat(el("space-pitch").value) || 1.0;
-      config.gap = parseInt(el("space-gap").value, 10) || 0;
-    }
-    return config;
   }
 
   function saveSpace() {
@@ -294,14 +258,14 @@
       report_sections: lines.fromText(el("space-report").value),
       // Готовність знімає з чернетки саме людина, а не факт «щось зберегли».
       draft: !el("space-ready").checked,
-      repertoire: el("space-repertoire").value,
       interface: Object.assign({}, base.interface || {}, {
         mode: el("space-mode").value,
         autoplay: el("space-autoplay").checked
       }),
-      providers: Object.assign({}, base.providers || {}, {
-        tts: buildTtsConfig((base.providers || {}).tts || {})
-      }),
+      // providers (LLM/TTS) сюди не входять: на задеплоєній версії їх все
+      // одно підмінює env-змінна (LLM_PROVIDER_OVERRIDE/TTS_PROVIDER_OVERRIDE),
+      // тож редагування тут лише вводило б в оману. Що вже було в конфізі —
+      // лишається незмінним через base.
       branding: Object.assign({}, base.branding || {}, {
         accent: el("space-accent").value.trim(),
         page_title: el("space-page-title").value.trim()
@@ -311,16 +275,8 @@
     post("/api/admin/space", { space: state.space, data: payload })
       .then(function () {
         state.spaceData = payload;
-        // Провайдер міг змінитись — просимо сервер перезібрати його наживо,
-        // інакше довелось би перезапускати сервер і рвати live-сесії.
-        return post("/api/admin/tts/reload", {}).then(function (info) {
-          flash("Збережено · озвучення: " + info.provider, "ok");
-          state.voiceName = "";
-          return refresh().then(function () { return loadSpaceData(); });
-        }).catch(function (err) {
-          flash("Збережено, але озвучення не піднялось: " + err.message, "bad");
-          return refresh();
-        });
+        flash("Збережено", "ok");
+        return refresh();
       })
       .catch(function (err) {
         el("space-error").textContent = err.message;
@@ -328,170 +284,151 @@
       });
   }
 
-  /* ── голос ─────────────────────────────────────────────────────────────
+  /* ── видалення (у кошик) ──────────────────────────────────────────────
    *
-   * Список голосів — те, що реально віддає цей браузер. Нічого не додаємо «за
-   * специфікацією»: Web Speech API не повідомляє ні статі, ні якості, і
-   * підписувати голоси навмання означало б вигадувати дані. Тому підпис один —
-   * назва й мова від системи, а рішення ухвалює людина, послухавши.
+   * Сюди дані респондентів не потрапляють: рішення про них — лише в кошику,
+   * на «видалити назавжди», де відкату вже не буде.
    */
 
-  function spaceLang() {
-    var langs = (state.spaceData && state.spaceData.languages) || ["uk"];
-    return langs[0] === "uk" ? "uk-UA" : langs[0];
-  }
-
-  function ttsSettings() {
-    return {
-      lang: spaceLang(),
-      voiceName: state.voiceName || null,
-      rate: parseFloat(el("space-rate").value) || 0.97,
-      pitch: parseFloat(el("space-pitch").value) || 1.0,
-      gap: parseInt(el("space-gap").value, 10)
-    };
-  }
-
-  /* Параметри локальної моделі — інші, ніж у браузера. Раніше тут показувались
-     браузерні швидкість і тон, і на Piper вони не впливали ніяк: дослідник
-     рухав слайдери й не чув жодної зміни. */
-  function serverTuning() {
-    var noise = el("space-noise").value;
-    var tuning = {
-      length_scale: parseFloat(el("space-length").value) || 1.0,
-      sentence_silence: parseFloat(el("space-silence").value),
-      add_stress: el("space-stress").checked
-    };
-    if (noise !== "") {
-      tuning.noise_scale = parseFloat(noise);
-      tuning.noise_w_scale = noise === "0" ? 0 : 0.4;
+  function toggleDeleteConfirm(show) {
+    el("delete-confirm").classList.toggle("hidden", !show);
+    el("delete-error").textContent = "";
+    if (show) {
+      var space = state.spaces.filter(function (s) { return s.key === state.space; })[0];
+      el("delete-confirm-title").textContent = (space && (space.title || space.key)) || state.space;
     }
-    return tuning;
   }
 
-  function tryVoice(name) {
-    if (state.ttsProvider && state.ttsProvider !== "browser") {
-      // Серверний провайдер: аудіо синтезує сервер, текст фіксований у коді.
-      if (state.preview) { try { state.preview.pause(); } catch (e) {} }
-      var body = serverTuning();
-      body.voice = name || state.voiceName || null;
-      el("tuning-note").textContent = "синтезую…";
-      fetch("/api/admin/tts/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
-      }).then(function (response) {
-        if (!response.ok) return response.json().then(function (d) { throw new Error(d.error); });
-        return response.blob();
-      }).then(function (blob) {
-        var url = URL.createObjectURL(blob);
-        state.preview = new Audio(url);
-        state.preview.addEventListener("ended", function () {
-          URL.revokeObjectURL(url);
-          el("tuning-note").textContent = "";
+  function deleteSpace() {
+    el("delete-error").textContent = "";
+    post("/api/admin/space/delete", { space: state.space })
+      .then(function () {
+        toggleDeleteConfirm(false);
+        flash("Перенесено в кошик", "ok");
+        if (state.trashOpen) loadTrash();
+        return refresh().then(function () {
+          if (state.spaces.length) selectSpace(state.spaces[0].key);
         });
-        el("tuning-note").textContent = "";
-        state.preview.play();
-      }).catch(function (err) {
-        el("tuning-note").textContent = "";
-        flash(err.message, "bad");
-      });
-      return;
-    }
-
-    if (!window.ITAudio || !window.speechSynthesis) return;
-    var config = ttsSettings();
-    if (name) config.voiceName = name;
-    if (state.speaker) state.speaker.stop();
-    state.speaker = window.ITAudio.createSpeaker(config);
-    state.speaker.speak(SAMPLE, {});
+      })
+      .catch(function (err) { el("delete-error").textContent = err.message; });
   }
 
-  function renderVoices() {
-    // Спершу питаємо сервер: якщо озвучення серверне, голоси беруться від
-    // провайдера, а не з браузера дослідника — це різні набори.
-    fetch("/api/tts/voices").then(function (r) { return r.json(); }).then(function (data) {
-      state.ttsProvider = data.provider;
-      toggleTuning(data.provider);
-      if (data.provider && data.provider !== "browser") {
-        drawVoices((data.items || []).map(function (item) {
-          return { name: item.name, lang: item.locale || "", localService: true,
-                   gender: item.gender || "" };
-        }), data.provider, data.error);
-        return;
-      }
-      if (!window.ITAudio || !window.speechSynthesis) { drawVoices([], "browser"); return; }
-      drawVoices(window.ITAudio.listVoices(spaceLang()), "browser");
-    }).catch(function () {
-      if (window.ITAudio && window.speechSynthesis) {
-        drawVoices(window.ITAudio.listVoices(spaceLang()), "browser");
-      }
+  /* ── кошик ─────────────────────────────────────────────────────────── */
+
+  function loadTrash() {
+    return api("/api/admin/trash").then(function (data) {
+      state.trash = data.items;
+      renderTrash();
     });
   }
 
-  function drawVoices(voices, provider, error) {
-    var host = el("voice-list");
+  function renderTrash() {
+    var host = el("trash-list");
     host.innerHTML = "";
-
-    var where = provider === "browser" ? ("браузер, мова " + spaceLang()) : ("провайдер " + provider);
-    el("voice-count").textContent = voices.length
-      ? (voices.length + " " + (voices.length === 1 ? "голос" : "голосів") + " — " + where)
-      : ("голосів немає — " + where);
-
-    if (error) {
-      host.innerHTML = "<p class='error-text'>" + error + "</p>";
+    if (!state.trash.length) {
+      host.innerHTML = "<li class='muted tiny'>Кошик порожній.</li>";
       return;
     }
-    if (!voices.length) {
-      host.innerHTML = "<p class='muted tiny'>Голосів немає — питання не озвучуватимуться.</p>";
-      return;
-    }
-
-    voices.forEach(function (voice) {
+    state.trash.forEach(function (item) {
+      var li = document.createElement("li");
       var row = document.createElement("div");
-      row.className = "voice-row" + (voice.name === state.voiceName ? " active" : "");
-
-      var play = document.createElement("button");
-      play.type = "button";
-      play.textContent = "▶";
-      play.title = "Прослухати";
-      play.addEventListener("click", function () { tryVoice(voice.name); });
-      row.appendChild(play);
+      row.className = "trash-row";
 
       var name = document.createElement("span");
-      name.className = "name";
-      name.textContent = voice.name;
+      name.textContent = item.title || item.key;
       row.appendChild(name);
 
-      var lang = document.createElement("span");
-      lang.className = "lang";
-      lang.textContent = [voice.lang, voice.gender].filter(Boolean).join(" · ");
-      row.appendChild(lang);
+      var restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "ghost small";
+      restore.textContent = "Відновити";
+      restore.addEventListener("click", function () { restoreSpace(item.key); });
+      row.appendChild(restore);
 
-      var choose = document.createElement("button");
-      choose.type = "button";
-      choose.textContent = voice.name === state.voiceName ? "обрано" : "обрати";
-      if (voice.name === state.voiceName) choose.className = "chosen";
-      choose.addEventListener("click", function () {
-        state.voiceName = voice.name;
-        renderVoices();
-      });
-      row.appendChild(choose);
+      var purge = document.createElement("button");
+      purge.type = "button";
+      purge.className = "ghost small";
+      purge.textContent = "Видалити назавжди";
+      purge.addEventListener("click", function () { togglePurgeConfirm(li, item); });
+      row.appendChild(purge);
 
-      host.appendChild(row);
+      li.appendChild(row);
+      host.appendChild(li);
     });
   }
 
-  /* ── інтервʼю ──────────────────────────────────────────────────────── */
+  function restoreSpace(key) {
+    post("/api/admin/trash/restore", { space: key })
+      .then(function () {
+        flash("Відновлено", "ok");
+        return Promise.all([refresh(), loadTrash()]).then(function () { selectSpace(key); });
+      })
+      .catch(function (err) { flash(err.message, "bad"); });
+  }
+
+  /* Питання про відповіді респондентів — саме тут: це остання й безповоротна
+     дія, на відміну від переносу в кошик. */
+  function togglePurgeConfirm(li, item) {
+    var existing = li.querySelector(".purge-confirm");
+    if (existing) { existing.remove(); return; }
+
+    var box = document.createElement("div");
+    box.className = "purge-confirm";
+    box.innerHTML =
+      "<p class='muted tiny'>Видалити «" + (item.title || item.key) +
+      "» назавжди. Що зробити з уже зібраними відповідями респондентів?</p>";
+
+    var actions = document.createElement("div");
+    actions.className = "actions";
+
+    var keepData = document.createElement("button");
+    keepData.type = "button";
+    keepData.className = "ghost small";
+    keepData.textContent = "Лишити відповіді";
+    keepData.addEventListener("click", function () { purgeSpace(item.key, false); });
+    actions.appendChild(keepData);
+
+    var withData = document.createElement("button");
+    withData.type = "button";
+    withData.className = "danger small";
+    withData.textContent = "Видалити разом із відповідями";
+    withData.addEventListener("click", function () { purgeSpace(item.key, true); });
+    actions.appendChild(withData);
+
+    var cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "ghost small";
+    cancel.textContent = "Скасувати";
+    cancel.addEventListener("click", function () { box.remove(); });
+    actions.appendChild(cancel);
+
+    box.appendChild(actions);
+    li.appendChild(box);
+  }
+
+  function purgeSpace(key, withSessions) {
+    post("/api/admin/trash/purge", { space: key, delete_sessions: withSessions })
+      .then(function (result) {
+        flash(withSessions
+          ? ("Видалено назавжди разом із " + result.removed_sessions + " інтервʼю респондентів")
+          : "Видалено назавжди. Відповіді респондентів лишились у сховищі", "ok");
+        return loadTrash();
+      })
+      .catch(function (err) { flash(err.message, "bad"); });
+  }
+
+  /* ── результати ────────────────────────────────────────────────────── */
 
   function loadRuns() {
     api("/api/sessions").then(function (data) {
       var host = el("runs-list");
       host.innerHTML = "";
-      if (!data.items.length) {
-        host.innerHTML = "<p class='muted'>Завершених інтервʼю ще немає.</p>";
+      var items = data.items.filter(function (item) { return item.space === state.space; });
+      if (!items.length) {
+        host.innerHTML = "<p class='muted'>Завершених інтервʼю тут ще немає.</p>";
         return;
       }
-      data.items.forEach(function (item) {
+      items.forEach(function (item) {
         var row = document.createElement("div");
         row.className = "run";
 
@@ -643,7 +580,7 @@
     el("new-space-error").textContent = "";
     post("/api/admin/space/new", { space: key, title: title })
       .then(function () {
-        flash("Простір створено з шаблону", "ok");
+        flash("Інтервʼю створено з шаблону", "ok");
         toggleNewSpace(false);
         return refresh().then(function () { selectSpace(key); });
       })
@@ -661,46 +598,24 @@
         el("tab-" + name).classList.toggle("hidden", name !== tab.dataset.tab);
       });
       if (tab.dataset.tab === "runs") loadRuns();
-      if (tab.dataset.tab === "phrases" && window.ITPhrases) window.ITPhrases.init(state.space);
     });
   });
 
-  function showSliderValues() {
-    el("rate-value").textContent = "×" + parseFloat(el("space-rate").value).toFixed(2);
-    el("pitch-value").textContent = "×" + parseFloat(el("space-pitch").value).toFixed(2);
-    el("length-value").textContent = "×" + parseFloat(el("space-length").value).toFixed(2);
-    el("silence-value").textContent = parseFloat(el("space-silence").value).toFixed(2);
-  }
-
-  function toggleTuning(provider) {
-    var server = provider && provider !== "browser" && provider !== "none";
-    el("tuning-server").classList.toggle("hidden", !server);
-    el("tuning-browser").classList.toggle("hidden", server);
-  }
-  el("space-rate").addEventListener("input", showSliderValues);
-  el("space-pitch").addEventListener("input", showSliderValues);
-  el("space-length").addEventListener("input", showSliderValues);
-  el("space-silence").addEventListener("input", showSliderValues);
-  el("btn-try-voice").addEventListener("click", function () { tryVoice(null); });
-
-  // Голоси приходять асинхронно — перший рендер може бути порожнім.
-  if (window.speechSynthesis) {
-    window.speechSynthesis.getVoices();
-    window.speechSynthesis.onvoiceschanged = function () {
-      if (state.spaceData) renderVoices();
-    };
-  }
-
   el("btn-save-guide").addEventListener("click", saveGuide);
   el("btn-save-space").addEventListener("click", saveSpace);
+  el("btn-delete-space").addEventListener("click", function () { toggleDeleteConfirm(true); });
+  el("btn-delete-cancel").addEventListener("click", function () { toggleDeleteConfirm(false); });
+  el("btn-delete-confirm").addEventListener("click", deleteSpace);
+  el("btn-toggle-trash").addEventListener("click", function () {
+    state.trashOpen = !state.trashOpen;
+    el("trash-list").classList.toggle("hidden", !state.trashOpen);
+    if (state.trashOpen) loadTrash();
+  });
   el("btn-new-space").addEventListener("click", function () {
     toggleNewSpace(el("new-space-form").classList.contains("hidden"));
   });
   el("btn-cancel-space").addEventListener("click", function () { toggleNewSpace(false); });
   el("new-space-form").addEventListener("submit", newSpace);
-  el("btn-add-topic").addEventListener("click", function () {
-    el("topics").appendChild(topicNode({ max_probes: 4 }));
-  });
   el("guide-select").addEventListener("change", function () { loadGuide(this.value); });
 
   function refresh() {

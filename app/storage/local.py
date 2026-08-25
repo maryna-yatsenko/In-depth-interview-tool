@@ -11,9 +11,11 @@
 
 import json
 import os
+import shutil
 from typing import Any, Dict, List, Optional
 
 from . import db as _db
+from . import voice as _voice
 
 DEFAULT_DIR = os.path.join(os.getcwd(), "data", "sessions")
 LIVE_DIR = os.path.join(os.getcwd(), "data", "live")
@@ -166,3 +168,55 @@ def drop_live(session_id: str, directory: Optional[str] = None) -> None:
     path = os.path.join(directory, "%s.json" % _safe_id(session_id))
     if os.path.exists(path):
         os.remove(path)
+
+
+# ── видалення (адмінка: дослідник видаляє інтервʼю разом із даними) ───────
+
+def delete_sessions_for_space(space_key: str) -> int:
+    """Прибирає завершені й незавершені сесії цього простору разом із
+    голосовими записами. Повертає кількість видалених завершених сесій —
+    для підтвердження в панелі."""
+    if _on_postgres():
+        return _db.delete_sessions_for_space(space_key)
+
+    session_ids = []
+    removed = 0
+
+    finished_dir = _dir(None, "sessions")
+    if os.path.isdir(finished_dir):
+        for name in list(os.listdir(finished_dir)):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(finished_dir, name)
+            try:
+                data = load_session(path)
+            except ValueError:
+                continue
+            if data.get("space") != space_key:
+                continue
+            session_ids.append(data.get("session_id") or name[:-5])
+            os.remove(path)
+            removed += 1
+
+    live_dir = _dir(None, "live")
+    if os.path.isdir(live_dir):
+        for name in list(os.listdir(live_dir)):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(live_dir, name)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+            except ValueError:
+                continue
+            if data.get("space") != space_key:
+                continue
+            session_ids.append(data.get("session_id") or name[:-5])
+            os.remove(path)
+
+    for session_id in session_ids:
+        directory = _voice.session_dir(session_id)
+        if os.path.isdir(directory):
+            shutil.rmtree(directory, ignore_errors=True)
+
+    return removed

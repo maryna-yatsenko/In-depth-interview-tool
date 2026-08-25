@@ -17,7 +17,7 @@
   <div class="layout">
     <aside class="sidebar">
       <div class="sidebar-head">
-        <span>Простори</span>
+        <span>Інтервʼю</span>
         <button id="btn-new-space" class="ghost small">+ новий</button>
       </div>
       <form id="new-space-form" class="new-space hidden">
@@ -35,15 +35,20 @@
       </form>
 
       <ul id="space-list" class="space-list"></ul>
+
+      <div class="sidebar-head">
+        <button id="btn-toggle-trash" class="ghost small">🗑 Кошик</button>
+      </div>
+      <ul id="trash-list" class="space-list hidden"></ul>
+
       <p class="muted tiny" id="root-path"></p>
     </aside>
 
     <main class="content">
       <nav class="tabs">
         <button class="tab active" data-tab="guide">Гайд</button>
-        <button class="tab" data-tab="space">Простір</button>
-        <button class="tab" data-tab="phrases">Репліки</button>
-        <button class="tab" data-tab="runs">Інтервʼю</button>
+        <button class="tab" data-tab="space">Налаштування</button>
+        <button class="tab" data-tab="runs">Результати</button>
       </nav>
 
       <!-- Гайд -->
@@ -74,11 +79,19 @@
 
         <div class="section-head">
           <h2>Теми</h2>
-          <button id="btn-add-topic" class="ghost small">+ тема</button>
         </div>
-        <p class="muted tiny">«Що треба зʼясувати» — це не текст питання. Інтервʼюер
-           формулює сам; список — про зміст, не про слова.</p>
-        <div id="topics"></div>
+        <p class="muted tiny">Кожна тема — з нового абзацу (порожній рядок між ними).
+           Перший рядок абзацу — назва теми, рядки під ним — що саме треба зʼясувати
+           (по одному пункту на рядок). «Що треба зʼясувати» — це не текст питання:
+           інтервʼюер формулює сам, список — про зміст, не про слова.</p>
+        <textarea id="guide-topics" rows="18" class="topics-text" spellcheck="false"
+          placeholder="Назва першої теми
+пункт, який треба зʼясувати
+ще один пункт
+
+Назва другої теми
+пункт
+пункт"></textarea>
 
         <div class="actions sticky">
           <button id="btn-save-guide" class="primary">Зберегти гайд</button>
@@ -147,82 +160,6 @@
           <textarea id="space-report" rows="4"></textarea>
         </label>
 
-        <div class="section-head">
-          <h2>Голос інтервʼюера</h2>
-          <span id="voice-count" class="muted tiny"></span>
-        </div>
-
-        <label>Провайдер озвучення
-          <select id="space-tts-provider">
-            <option value="piper">Piper — локально, 3 голоси, синтез &lt;1 с</option>
-            <option value="espnet">ESPnet — локально, 5 голосів, синтез ≈2 с</option>
-            <option value="browser">Браузер — старий системний голос</option>
-            <option value="none">Без озвучення</option>
-          </select>
-        </label>
-        <p class="muted tiny">Перемикання діє після «Зберегти простір» — сервер
-           перезбирає провайдера наживо, без перезапуску. ESPnet тримає модель у
-           памʼяті й кешує фіксовані репліки, тому відкриття гайда звучить одразу,
-           а нові уточнення синтезуються ≈2 с.</p>
-        <p class="muted tiny">Список — це те, що реально є в цьому браузері.
-           Натисни ▶, щоб почути. У різних браузерах набір різний: Chrome додає
-           до системних голосів свої серверні, Electron і Safari показують лише
-           системні. Тому перевіряй у тому браузері, у якому проходитимуть інтервʼю.</p>
-        <div id="voice-list" class="voice-list"></div>
-
-        <!-- Налаштування браузерного синтезу -->
-        <div id="tuning-browser">
-          <div class="row">
-            <label>Швидкість <span id="rate-value" class="muted"></span>
-              <input id="space-rate" type="range" min="0.7" max="1.2" step="0.01">
-            </label>
-            <label>Висота тону <span id="pitch-value" class="muted"></span>
-              <input id="space-pitch" type="range" min="0.6" max="1.4" step="0.01">
-            </label>
-          </div>
-          <label>Пауза між фразами, мс
-            <input id="space-gap" type="number" min="0" max="600" step="10">
-          </label>
-        </div>
-
-        <!-- Налаштування локальної нейронної моделі: інші параметри, ніж у браузера -->
-        <div id="tuning-server" class="hidden">
-          <div class="row">
-            <label>Темп <span id="length-value" class="muted"></span>
-              <span class="muted tiny">більше = повільніше й спокійніше</span>
-              <input id="space-length" type="range" min="0.85" max="1.35" step="0.01">
-            </label>
-            <label>Пауза між реченнями, с <span id="silence-value" class="muted"></span>
-              <input id="space-silence" type="range" min="0" max="1" step="0.05">
-            </label>
-          </div>
-
-          <label class="check">
-            <input id="space-stress" type="checkbox">
-            <span>Ставити наголоси
-              <span class="muted tiny">— головне для української вимови; модель навчена їх читати</span>
-            </span>
-          </label>
-
-          <label>Живість голосу
-            <select id="space-noise">
-              <option value="">жива (кожному респонденту трохи інакше, розкид ≈0,9 с)</option>
-              <option value="0.35">помірна (розкид ≈0,26 с)</option>
-              <option value="0">стабільна (усім байт-у-байт однаково, але пласкіше)</option>
-            </select>
-          </label>
-        </div>
-
-        <label>Репертуар інтервʼюера
-          <select id="space-repertoire">
-            <option value="free">вільний — модель формулює питання сама (синтез)</option>
-            <option value="bank">банк — вибирає з реплік, записаних голосом</option>
-          </select>
-        </label>
-        <p class="muted tiny">У режимі банку синтез не використовується взагалі.
-           Записи робляться у вкладці «Репліки»; поки банк неповний, інтервʼю не
-           почнеться, і панель скаже, чого саме не хватає.</p>
-
         <label class="check">
           <input id="space-autoplay" type="checkbox">
           <span>Озвучувати питання автоматично
@@ -238,11 +175,6 @@
           </select>
         </label>
 
-        <div class="actions" style="margin-bottom:14px">
-          <button type="button" id="btn-try-voice" class="ghost small">▶ Прослухати з цими налаштуваннями</button>
-          <span id="tuning-note" class="muted tiny"></span>
-        </div>
-
         <div class="row">
           <label>Акцентний колір
             <input id="space-accent" type="text" placeholder="#2f6f4f">
@@ -253,33 +185,27 @@
         </div>
 
         <div class="actions sticky">
-          <button id="btn-save-space" class="primary">Зберегти простір</button>
+          <button id="btn-save-space" class="primary">Зберегти</button>
           <span id="space-error" class="error-text"></span>
         </div>
-      </section>
-
-      <!-- Банк реплік -->
-      <section id="tab-phrases" class="tab-panel hidden">
-        <div id="bank-gaps" class="gaps hidden"></div>
-
-        <p class="muted tiny">Інтервʼюер не формулює питання — він вибирає з цього
-           набору. Тому всі респонденти чують буквально однакові формулювання, і
-           навідне питання не може виникнути за побудовою. Записуй своїм голосом:
-           це і найкраща якість, і нуль затримки.</p>
 
         <div class="section-head">
-          <h2>Репліки</h2>
-          <button id="btn-add-phrase" class="ghost small">+ репліка</button>
+          <h2>Видалення</h2>
         </div>
-        <div id="phrase-list"></div>
-
-        <div class="actions sticky">
-          <button id="btn-save-phrases" class="primary">Зберегти тексти</button>
-          <span id="phrases-error" class="error-text"></span>
+        <p class="muted tiny">Переносить у кошик. Зібрані відповіді респондентів це не
+           чіпає — їх можна прибрати пізніше, з кошика. Звідти інтервʼю можна й повернути.</p>
+        <button type="button" id="btn-delete-space" class="danger small">Видалити це інтервʼю</button>
+        <div id="delete-confirm" class="delete-confirm hidden">
+          <p class="muted tiny">Перенести «<span id="delete-confirm-title"></span>» у кошик?</p>
+          <div class="actions">
+            <button type="button" id="btn-delete-confirm" class="danger small">У кошик</button>
+            <button type="button" id="btn-delete-cancel" class="ghost small">Скасувати</button>
+          </div>
+          <p id="delete-error" class="error-text"></p>
         </div>
       </section>
 
-      <!-- Інтервʼю -->
+      <!-- Результати -->
       <section id="tab-runs" class="tab-panel hidden">
         <div id="runs-list"></div>
         <div id="transcript"></div>
@@ -288,7 +214,6 @@
   </div>
 
   <script src="/audio.js"></script>
-  <script src="/phrases.js"></script>
   <script src="/admin.js"></script>
 </body>
 </html>

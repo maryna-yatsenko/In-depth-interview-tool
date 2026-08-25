@@ -17,9 +17,7 @@ import shutil
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..config.phrases import KINDS, PhraseError, load_bank, save_bank
 from ..config.space import ConfigError, load_guide, load_space
-from ..interview import guard
 from ..storage import db as store_db
 from ..storage import local as store_files
 
@@ -108,8 +106,21 @@ def _check_key(key: str, what: str) -> str:
     return key
 
 
+def _trash_dir(root: str) -> str:
+    """Поза `root`, щоб `os.listdir(root)` у `list_spaces` не підхопив
+    вміст кошика як ще один простір."""
+    return os.path.join(os.path.dirname(os.path.normpath(root)), ".trash")
+
+
 def _space_dir(root: str, space_key: str) -> str:
-    path = os.path.join(root, _check_key(space_key, "простору"))
+    """Усе, що в кошику (навіть лише позначене — на Vercel теку бандла не
+    прибрати), для звичайних операцій (читання/запис/створення) — як
+    неіснуюче. Операції самого кошика (відновити/видалити назавжди) цю
+    функцію не викликають — вони працюють із тамбстоуном/теками кошика прямо."""
+    key = _check_key(space_key, "інтервʼю")
+    if _on_postgres() and store_db.is_space_deleted(key):
+        raise AdminError("Інтервʼю '%s' не існує" % space_key, 404)
+    path = os.path.join(root, key)
     if os.path.isdir(path):
         return path
     # Простір, створений через адмінку на живому сайті, не має локальної
@@ -117,7 +128,7 @@ def _space_dir(root: str, space_key: str) -> str:
     # один рядок у config_overrides.
     if _on_postgres() and store_db.list_config_override_paths(space_key):
         return path
-    raise AdminError("Простору '%s' не існує" % space_key, 404)
+    raise AdminError("Інтервʼю '%s' не існує" % space_key, 404)
 
 
 def _write_validated(root: str, space_key: str, path: str, data: Dict[str, Any],
@@ -152,6 +163,11 @@ def list_spaces(root: str) -> List[Dict[str, Any]]:
         # Простір, створений через адмінку на живому сайті, не лежить у
         # коді деплою взагалі — без цього його не було б видно в переліку.
         names |= set(store_db.list_config_override_spaces())
+        # Видалений (у кошику чи назавжди) простір ховаємо і тоді, коли він
+        # і досі частина коду деплою (`travel`/`example`) — прибрати теку з
+        # незмінного бандла на Vercel неможливо, тож ховає саме прапорець.
+        # Саме "усі", а не лише кошик: видалене назавжди інакше спливло б знов.
+        names -= set(store_db.list_all_deleted_space_keys())
     if not names:
         return []
     items = []
@@ -188,7 +204,7 @@ def read_space(root: str, space_key: str) -> Dict[str, Any]:
     path = os.path.join(root, space_key, "space.json")
     data = _load_json_aware(root, space_key, path)
     if data is None:
-        raise AdminError("Простору '%s' не існує" % space_key, 404)
+        raise AdminError("Інтервʼю '%s' не існує" % space_key, 404)
     return data
 
 
@@ -235,10 +251,10 @@ def write_guide(root: str, space_key: str, guide_key: str, data: Dict[str, Any])
 
 
 def create_space(root: str, space_key: str, title: str, template: str = "example") -> Dict[str, Any]:
-    _check_key(space_key, "простору")
+    _check_key(space_key, "інтервʼю")
     target = os.path.join(root, space_key)
     if os.path.isdir(target) or (_on_postgres() and store_db.list_config_override_paths(space_key)):
-        raise AdminError("Простір '%s' уже існує" % space_key, 409)
+        raise AdminError("Інтервʼю '%s' уже існує" % space_key, 409)
     source = os.path.join(root, _check_key(template, "шаблону"))
     if not os.path.isdir(source):
         raise AdminError("Шаблон '%s' не знайдено" % template, 404)
@@ -309,153 +325,101 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
         _write_validated(root, space_key, path, guide, load_guide)
 
 
-# ── банк реплік ──────────────────────────────────────────────────────────
+# ── кошик ────────────────────────────────────────────────────────────────
 #
-# ⚠️ Свідомо лишається лише на локальному диску — не Postgres-aware, як усе
-# вище. `repertoire: "bank"` не використовує жоден задеплоєний простір
-# (обидва — "free"), тож на Vercel цей розділ функціонально недоступний,
-# доки хтось не захоче саме банк реплік у хмарі. Тоді і варто перенести.
+# «Видалити» переносить у кошик — оборотно, і саме тому без питань про
+# відповіді респондентів: ці дані ніщо тут не чіпає. Питання про них — лише
+# на «видалити назавжди», де відкату вже не буде.
 
-AUDIO_EXT = {
-    "audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".mp4",
-    "audio/x-m4a": ".m4a", "audio/wav": ".wav", "audio/wave": ".wav",
-    "audio/mpeg": ".mp3",
-}
+def trash_space(root: str, space_key: str) -> Dict[str, Any]:
+    _space_dir(root, space_key)  # 404, якщо інтервʼю не існує (або вже в кошику)
+    if _on_postgres():
+        store_db.mark_space_deleted(space_key)
+        return {"ok": True, "key": space_key}
+
+    source = os.path.join(root, space_key)
+    trash_dir = _trash_dir(root)
+    os.makedirs(trash_dir, exist_ok=True)
+    dest = os.path.join(trash_dir, space_key)
+    if os.path.isdir(dest):
+        shutil.rmtree(dest)
+    shutil.move(source, dest)
+    return {"ok": True, "key": space_key}
 
 
-def read_phrases(root: str, space_key: str) -> Dict[str, Any]:
-    """Банк для панелі: що записано, чого не хватає, і де формулювання підозріле.
+def list_trash(root: str) -> List[Dict[str, Any]]:
+    items = []
+    if _on_postgres():
+        for entry in store_db.list_deleted_spaces():
+            key = entry["key"]
+            title = key
+            try:
+                space = _load_validated_aware(root, key, os.path.join(root, key, "space.json"),
+                                              load_space)
+                title = space.title
+            except (ConfigError, ValueError, OSError):
+                pass
+            items.append({"key": key, "title": title, "deleted_at": entry["deleted_at"]})
+        return items
 
-    Перевірка формулювань тут не для краси. Банк — це і є методологія: якщо в
-    ньому лежить навідне питання, воно піде всім респондентам однаково. Дешевше
-    побачити це під час запису, ніж у транскриптах.
-    """
-    space_dir = _space_dir(root, space_key)
-    bank = load_bank(space_dir)
-    guide_key = None
-    guides_dir = os.path.join(space_dir, "guides")
-    if os.path.isdir(guides_dir):
-        files = sorted(f for f in os.listdir(guides_dir) if f.endswith(".json"))
-        guide_key = files[0][:-5] if files else None
-
-    topic_ids = []
-    if guide_key:
+    trash_dir = _trash_dir(root)
+    if not os.path.isdir(trash_dir):
+        return []
+    for key in sorted(os.listdir(trash_dir)):
+        space_path = os.path.join(trash_dir, key, "space.json")
+        title = key
+        if os.path.isfile(space_path):
+            try:
+                title = load_space(space_path).title
+            except (ConfigError, ValueError, OSError):
+                pass
+        deleted_at = None
         try:
-            guide = load_guide(os.path.join(guides_dir, "%s.json" % guide_key))
-            topic_ids = [t.id for t in guide.topics]
-        except ConfigError:
-            topic_ids = []
-
-    items = []
-    for phrase in bank.phrases:
-        items.append({
-            "id": phrase.id,
-            "kind": phrase.kind,
-            "text": phrase.text,
-            "topic_id": phrase.topic_id,
-            "recorded": phrase.recorded,
-            "audio": phrase.audio,
-            "warnings": guard.check(phrase.text),
-        })
-    return {
-        "phrases": items,
-        "gaps": bank.missing_for_interview(topic_ids),
-        "topics": topic_ids,
-        "kinds": list(KINDS),
-    }
+            deleted_at = os.path.getmtime(os.path.join(trash_dir, key))
+        except OSError:
+            pass
+        items.append({"key": key, "title": title, "deleted_at": deleted_at})
+    return items
 
 
-def write_phrases(root: str, space_key: str, phrases: List[Dict[str, Any]]) -> Dict[str, Any]:
-    space_dir = _space_dir(root, space_key)
-    existing = {p.id: p.audio for p in load_bank(space_dir).phrases}
+def restore_space(root: str, space_key: str) -> Dict[str, Any]:
+    key = _check_key(space_key, "інтервʼю")
+    if _on_postgres():
+        if not store_db.is_space_trashed(key):
+            raise AdminError("Інтервʼю '%s' немає в кошику" % key, 404)
+        store_db.unmark_space_deleted(key)
+        return {"ok": True, "key": key}
 
-    cleaned = []
-    seen = set()
-    for raw in phrases or []:
-        pid = (raw.get("id") or "").strip()
-        if not pid or not KEY_RE.match(pid):
-            raise AdminError("Недопустимий id репліки: «%s»" % pid)
-        if pid in seen:
-            raise AdminError("Дубльований id репліки: «%s»" % pid)
-        seen.add(pid)
-        if raw.get("kind") not in KINDS:
-            raise AdminError("Репліка «%s»: невідомий тип" % pid)
-        if not (raw.get("text") or "").strip():
-            raise AdminError("Репліка «%s» без тексту" % pid)
-        item = {"id": pid, "kind": raw["kind"], "text": raw["text"].strip()}
-        if raw.get("topic_id"):
-            item["topic_id"] = raw["topic_id"]
-        # Запис прив'язаний до id: перейменування id губить аудіо, і це
-        # видно одразу в панелі, а не при першому інтервʼю.
-        if existing.get(pid):
-            item["audio"] = existing[pid]
-        cleaned.append(item)
-
-    save_bank(space_dir, cleaned)
-    return {"ok": True, "count": len(cleaned)}
+    source = os.path.join(_trash_dir(root), key)
+    if not os.path.isdir(source):
+        raise AdminError("Інтервʼю '%s' немає в кошику" % key, 404)
+    dest = os.path.join(root, key)
+    if os.path.isdir(dest):
+        raise AdminError("Інтервʼю '%s' уже існує поза кошиком" % key, 409)
+    shutil.move(source, dest)
+    return {"ok": True, "key": key}
 
 
-def save_phrase_audio(root: str, space_key: str, phrase_id: str,
-                      content_type: str, data: bytes) -> Dict[str, Any]:
-    if not data:
-        raise AdminError("Порожній запис")
-    if len(data) > 20 * 1024 * 1024:
-        raise AdminError("Запис завеликий (більше 20 МБ)")
-    ext = AUDIO_EXT.get((content_type or "").split(";")[0].strip().lower())
-    if not ext:
-        raise AdminError("Невідомий формат аудіо: %s" % content_type)
+def purge_space(root: str, space_key: str, delete_sessions: bool = False) -> Dict[str, Any]:
+    """Видаляє назавжди — лише з кошика. Конфіг зникає безповоротно; зібрані
+    відповіді респондентів — лише якщо про це попросили явно."""
+    key = _check_key(space_key, "інтервʼю")
+    removed_sessions = 0
+    if delete_sessions:
+        removed_sessions = store_files.delete_sessions_for_space(key)
 
-    space_dir = _space_dir(root, space_key)
-    _check_key(phrase_id, "репліки")
-    bank = load_bank(space_dir)
-    phrase = bank.by_id(phrase_id)
-    if phrase is None:
-        raise AdminError("Репліки «%s» немає в банку" % phrase_id, 404)
+    if _on_postgres():
+        if not store_db.is_space_trashed(key):
+            raise AdminError("Інтервʼю '%s' немає в кошику" % key, 404)
+        store_db.delete_config_overrides(key)
+        store_db.mark_space_purged(key)
+        return {"ok": True, "key": key, "removed_sessions": removed_sessions}
 
-    audio_dir = os.path.join(space_dir, "audio")
-    os.makedirs(audio_dir, exist_ok=True)
-    filename = "%s%s" % (phrase_id, ext)
-    with open(os.path.join(audio_dir, filename), "wb") as fh:
-        fh.write(data)
-
-    # Старий запис іншого формату прибираємо, щоб не лишався сирота.
-    for other in os.listdir(audio_dir):
-        if other != filename and os.path.splitext(other)[0] == phrase_id:
-            os.remove(os.path.join(audio_dir, other))
-
-    items = []
-    for item in bank.phrases:
-        entry = {"id": item.id, "kind": item.kind, "text": item.text}
-        if item.topic_id:
-            entry["topic_id"] = item.topic_id
-        entry["audio"] = filename if item.id == phrase_id else item.audio
-        if not entry["audio"]:
-            entry.pop("audio")
-        items.append(entry)
-    save_bank(space_dir, items)
-    return {"ok": True, "id": phrase_id, "audio": filename, "bytes": len(data)}
-
-
-def delete_phrase_audio(root: str, space_key: str, phrase_id: str) -> Dict[str, Any]:
-    space_dir = _space_dir(root, space_key)
-    _check_key(phrase_id, "репліки")
-    bank = load_bank(space_dir)
-    audio_dir = os.path.join(space_dir, "audio")
-    if os.path.isdir(audio_dir):
-        for other in os.listdir(audio_dir):
-            if os.path.splitext(other)[0] == phrase_id:
-                os.remove(os.path.join(audio_dir, other))
-
-    items = []
-    for item in bank.phrases:
-        entry = {"id": item.id, "kind": item.kind, "text": item.text}
-        if item.topic_id:
-            entry["topic_id"] = item.topic_id
-        if item.audio and item.id != phrase_id:
-            entry["audio"] = item.audio
-        items.append(entry)
-    save_bank(space_dir, items)
-    return {"ok": True, "id": phrase_id}
+    target = os.path.join(_trash_dir(root), key)
+    if not os.path.isdir(target):
+        raise AdminError("Інтервʼю '%s' немає в кошику" % key, 404)
+    shutil.rmtree(target)
+    return {"ok": True, "key": key, "removed_sessions": removed_sessions}
 
 
 # ── маршрутизація ────────────────────────────────────────────────────────
@@ -472,8 +436,8 @@ def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any
             return 200, read_guide(root, query.get("space", ""), query.get("guide", ""))
         if path == "/api/admin/transcript":
             return 200, read_transcript(query.get("id", ""))
-        if path == "/api/admin/phrases":
-            return 200, read_phrases(root, query.get("space", ""))
+        if path == "/api/admin/trash":
+            return 200, {"items": list_trash(root)}
     elif method == "POST":
         if path == "/api/admin/space":
             return 200, write_space(root, payload.get("space", ""), payload.get("data") or {})
@@ -482,8 +446,11 @@ def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any
                                     payload.get("data") or {})
         if path == "/api/admin/space/new":
             return 200, create_space(root, payload.get("space", ""), payload.get("title", ""))
-        if path == "/api/admin/phrases":
-            return 200, write_phrases(root, payload.get("space", ""), payload.get("phrases") or [])
-        if path == "/api/admin/phrase/audio/delete":
-            return 200, delete_phrase_audio(root, payload.get("space", ""), payload.get("id", ""))
+        if path == "/api/admin/space/delete":
+            return 200, trash_space(root, payload.get("space", ""))
+        if path == "/api/admin/trash/restore":
+            return 200, restore_space(root, payload.get("space", ""))
+        if path == "/api/admin/trash/purge":
+            return 200, purge_space(root, payload.get("space", ""),
+                                    bool(payload.get("delete_sessions")))
     raise AdminError("not found", 404)

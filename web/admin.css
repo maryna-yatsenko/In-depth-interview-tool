@@ -62,14 +62,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .section-head h2 { font-size: 17px; margin: 0; }
 button.small { padding: 6px 11px; font-size: 13px; }
 
-.topic {
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 16px 18px; margin: 12px 0;
-}
-.topic-head { display: flex; gap: 12px; align-items: flex-end; }
-.topic-head label { flex: 1; margin-bottom: 10px; }
-.topic-head .narrow { flex: 0 0 90px; }
-.topic .drop { color: var(--danger); background: transparent; border: 1px solid var(--line); padding: 8px 11px; margin-bottom: 10px; }
+.topics-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
 
 .actions.sticky {
   position: sticky; bottom: 0; background: var(--bg);
@@ -89,17 +82,6 @@ button.small { padding: 6px 11px; font-size: 13px; }
 .turn { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
 .turn .who { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .turn.interviewer .who { color: var(--accent); }
-.voice-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 18px; }
-.voice-row {
-  display: flex; align-items: center; gap: 10px;
-  border: 1px solid var(--line); border-radius: 8px;
-  padding: 9px 12px; background: var(--surface); font-size: 14px;
-}
-.voice-row.active { border-color: var(--accent); }
-.voice-row .name { flex: 1; }
-.voice-row .lang { color: var(--muted); font-size: 12px; }
-.voice-row button { padding: 5px 10px; font-size: 13px; background: transparent; border: 1px solid var(--line); color: var(--text); }
-.voice-row .chosen { color: var(--accent); font-size: 12px; }
 input[type="range"] { padding: 0; accent-color: var(--accent); }
 input[type="checkbox"] { accent-color: var(--accent); }
 
@@ -115,36 +97,31 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 }
 
 
-/* ── Банк реплік ─────────────────────────────────────────────────────── */
+/* ── Видалення ───────────────────────────────────────────────────────── */
 
-.gaps {
+button.danger {
+  background: transparent; border: 1px solid var(--danger); color: var(--danger);
+}
+button.danger:hover { background: var(--danger); color: #fff; }
+.delete-confirm {
   background: var(--surface); border: 1px solid var(--danger);
-  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; font-size: 14px;
+  border-radius: var(--radius); padding: 14px 16px; margin-top: 10px;
 }
-.gaps ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+.delete-confirm .actions { flex-wrap: wrap; }
 
-.phrase-group { margin-bottom: 22px; }
-.phrase-group h3 {
-  font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--muted); margin: 0 0 8px;
+/* ── Кошик ───────────────────────────────────────────────────────────── */
+
+.trash-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 4px; font-size: 13px; color: var(--muted);
 }
-.phrase {
-  display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start;
-  background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px;
+.trash-row span { flex: 1; }
+.trash-row button { font-size: 12px; padding: 4px 8px; }
+.purge-confirm {
+  background: var(--surface); border: 1px solid var(--danger);
+  border-radius: var(--radius); padding: 10px 12px; margin: 4px 0 8px;
 }
-.phrase.unrecorded { border-left: 3px solid var(--danger); }
-.phrase.recorded { border-left: 3px solid var(--accent); }
-.phrase textarea { margin-top: 0; font-size: 14px; }
-.phrase .meta { display: flex; gap: 8px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
-.phrase .meta select, .phrase .meta input { margin-top: 0; font-size: 13px; padding: 5px 8px; width: auto; }
-.phrase .pid { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }
-.phrase .controls { display: flex; flex-direction: column; gap: 6px; min-width: 132px; }
-.phrase .controls button { font-size: 13px; padding: 7px 10px; }
-.phrase .rec { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
-.phrase .rec.active { background: var(--danger); color: #fff; }
-.phrase .state { font-size: 12px; color: var(--muted); text-align: center; }
-.phrase .warn { font-size: 12px; color: var(--danger); margin-top: 6px; }
+.purge-confirm .actions { flex-wrap: wrap; margin-top: 6px; }
 
 /* Записи голосу під рядком інтервʼю. */
 .voice-clips { padding: 8px 0 14px 12px; border-left: 2px solid var(--line); margin: -6px 0 10px 6px; }
