@@ -12,6 +12,7 @@
 """
 
 import os
+import shutil
 import tempfile
 from typing import Optional, Tuple
 
@@ -26,7 +27,14 @@ def _on_postgres() -> bool:
 def resolve_space_dir(root: str, space_key: str) -> str:
     """Повертає шлях, який можна віддати `load_space_dir` без жодних змін
     у ній самій: або теку деплою (як завжди), або матеріалізовану в /tmp
-    копію того, що дослідник відредагував через адмінку на живому сайті."""
+    копію того, що дослідник відредагував через адмінку на живому сайті.
+
+    Перевизначень може бути лише на частину файлів (дослідник зберіг лише
+    гайд, а `space.json` ніколи не редагував) — тому першим кроком копіюємо
+    весь бандл цілком, і лише потім перезаписуємо зверху ті шляхи, для яких
+    є рядок у Postgres. Матеріалізувати тільки перевизначені файли означало
+    б лишити в /tmp дірку там, де `load_space_dir` чекає на файл із бандла.
+    """
     bundled = os.path.join(root, space_key)
     if not _on_postgres():
         return bundled
@@ -38,6 +46,8 @@ def resolve_space_dir(root: str, space_key: str) -> str:
         return bundled
 
     tmp_root = os.path.join(tempfile.gettempdir(), "spaces", space_key)
+    if os.path.isdir(bundled):
+        shutil.copytree(bundled, tmp_root, dirs_exist_ok=True)
     for rel in paths:
         content = store_db.get_config_override(space_key, rel)
         if content is None:
