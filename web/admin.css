@@ -20,7 +20,8 @@ body.admin { background: var(--bg); }
 
 .new-space {
   background: var(--surface); border: 1px solid var(--accent);
-  border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 14px; margin-bottom: 14px;
 }
 .new-space .actions { margin-top: 4px; }
 .new-space .error-text { display: block; margin: 8px 0 0; }
@@ -73,6 +74,7 @@ button.small { padding: 6px 11px; font-size: 13px; }
 .run {
   display: grid; grid-template-columns: 1fr auto auto auto; gap: 14px; align-items: center;
   padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow-sm);
   background: var(--surface); margin-bottom: 8px; font-size: 14px;
 }
 .run .pill { font-size: 12px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
@@ -102,10 +104,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1
 button.danger {
   background: transparent; border: 1px solid var(--danger); color: var(--danger);
 }
-button.danger:hover { background: var(--danger); color: #fff; }
+button.danger:hover { background: var(--danger); color: var(--on-danger); }
 .delete-confirm {
   background: var(--surface); border: 1px solid var(--danger);
-  border-radius: var(--radius); padding: 14px 16px; margin-top: 10px;
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 14px 16px; margin-top: 10px;
 }
 .delete-confirm .actions { flex-wrap: wrap; }
 
@@ -119,7 +122,8 @@ button.danger:hover { background: var(--danger); color: #fff; }
 .trash-row button { font-size: 12px; padding: 4px 8px; }
 .purge-confirm {
   background: var(--surface); border: 1px solid var(--danger);
-  border-radius: var(--radius); padding: 10px 12px; margin: 4px 0 8px;
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 10px 12px; margin: 4px 0 8px;
 }
 .purge-confirm .actions { flex-wrap: wrap; margin-top: 6px; }
 

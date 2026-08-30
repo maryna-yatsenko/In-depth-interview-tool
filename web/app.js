@@ -1386,7 +1386,14 @@
       el("consent-title").textContent = space.title;
       el("consent-text").textContent = space.consent_text ||
         "Розмова записується у вигляді тексту і використовується для дослідження.";
-      document.documentElement.style.setProperty("--accent", space.accent);
+      // Лише світла тема: у темній --accent і --on-accent підібрані парою
+      // під контраст WCAG (кожен --accent там світліший, а --on-accent —
+      // темний текст саме під нього), і підміна тільки кольору тла лишила б
+      // текст на кнопці нечитабельним. Дефолт теми в обох темах уже
+      // сумісний, тож тут просто не чіпаємо темну.
+      if (space.accent && !window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.style.setProperty("--accent", space.accent);
+      }
 
       var tts = space.tts || {};
       var ttsProvider = (space.voice && space.voice.tts) || "none";

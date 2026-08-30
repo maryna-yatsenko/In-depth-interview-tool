@@ -24,3 +24,6 @@ web/_shots/
 .claude/scheduled_tasks.lock
 .vercel
 .env*
+
+# Дублікат стороннього репозиторію mantinedev/mantine — не частина проєкту.
+design-system/

@@ -1,34 +1,58 @@
 /* Сторінка респондента. Спокійна й нейтральна свідомо: яскравий інтерфейс —
-   це теж вплив на людину, а ми його якраз намагаємось зняти. */
+   це теж вплив на людину, а ми його якраз намагаємось зняти.
+
+   Токени кольору/радіуса/тіней/шрифту — з палітри Mantine (design-system/),
+   default theme: primaryColor "blue", defaultRadius "md". Кожен колір
+   тексту нижче підібраний і перевірений за формулою WCAG так, щоб давати
+   щонайменше 4.5:1 на --bg і на --surface (мінімум для звичайного тексту;
+   рядкам ≥18px чи жирним ≥14px формально досить і 3:1, але тут усюди
+   тримаємось вищого порогу, щоб не рахувати виняток на кожен рядок).
+   Тому відтінок у світлій темі — не завжди primaryShade.light Mantine
+   (він же buttons/фон), а найтемніший у шкалі, що ще проходить поріг —
+   для orange.9 і green.9 цього не вистачає навіть на кінці шкали (4.08 і
+   4.14), тому там --warn/--good трохи темніші за будь-який офіційний
+   відтінок Mantine: контраст важливіший за точний збіг зі шкалою. */
 
 :root {
-  --accent: #3a3a3a;
-  --bg: #fbfaf8;
+  --accent: #1971c2;        /* Mantine blue.8 — 4.76:1 як текст, 5.02:1 біло на ньому */
+  --on-accent: #fff;        /* Текст/іконка поверх заливки --accent */
+  --bg: #f8f9fa;            /* Mantine gray.0 */
   --surface: #ffffff;
-  --text: #1c1b1a;
-  --muted: #6b6864;
-  --line: #e4e1dc;
-  --danger: #a4362c;
-  --check: #2f7de1;
+  --text: #212529;          /* Mantine gray.9 — 14.6:1 */
+  --muted: #495057;         /* Mantine gray.7 — 7.8:1 (gray.6 давав лише 3.2:1) */
+  --line: #dee2e6;          /* Mantine gray.3 — лінії/рамки, не текст: поріг 3:1 не діє */
+  --danger: #c92a2a;        /* Mantine red.9 — 5.2:1 */
+  --on-danger: #fff;        /* Текст/іконка поверх заливки --danger */
+  --check: #087f5b;         /* Mantine teal.9 — 4.8:1 */
   /* Тепле — «ще недостатньо», зелене — «вже розгорнуто». Окремі від --check
      (він означає «почуте/підтверджено», інша річ) і від --danger (це не
      помилка, а заохочення розказати ще). */
-  --warn: #b8862b;
-  --good: #2f8f4e;
-  --radius: 10px;
+  --warn: #c3410e;          /* темніше за orange.9 (4.9:1; сам orange.9 — 4.08:1) */
+  --good: #277c38;          /* темніше за green.9 (5.0:1; сам green.9 — 4.14:1) */
+  --radius: 8px;            /* Mantine radius.md */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .05), 0 10px 15px -5px rgba(0, 0, 0, .05), 0 7px 7px -5px rgba(0, 0, 0, .04);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16151a;
-    --surface: #1f1e24;
-    --text: #eceaf0;
-    --muted: #9d99a6;
-    --line: #33313a;
-    --danger: #e08b82;
-    --check: #4d97ff;
-    --warn: #e0a94d;
-    --good: #4caf6d;
+    /* blue.8 (як у світлій темі) на такому темному тлі сам мав би лише
+       2.7:1 — ледь відрізнявся б від фону. blue.5 світліший саме настільки,
+       щоб бути помітним тлом кнопки (4.5:1) і текстом (теж 4.5:1), але вже
+       не тримає білий текст (2.99:1) — тому --on-accent тут темний, а не
+       білий. */
+    --accent: #339af0;        /* Mantine blue.5 — 4.54:1 і як тло, і як текст */
+    --on-accent: #141414;     /* 6.2:1 темного тексту на --accent */
+    --bg: #242424;            /* Mantine dark.7 */
+    --surface: #2e2e2e;       /* Mantine dark.6 */
+    --text: #c9c9c9;          /* Mantine dark.0 — 8.2:1 */
+    --muted: #b8b8b8;         /* Mantine dark.1 — 6.9:1 (dark.2 давав лише 3.5:1) */
+    --line: #424242;          /* Mantine dark.4 */
+    --danger: #ff6b6b;        /* Mantine red.5 — 4.9:1 як текст, але лише 2.8:1 під білим */
+    --on-danger: #141414;     /* 6.6:1 темного тексту на --danger */
+    --check: #38d9a9;         /* Mantine teal.4 — 7.5:1 */
+    --warn: #ffa94d;          /* Mantine orange.4 — 7.1:1 */
+    --good: #69db7c;          /* Mantine green.4 — 7.8:1 */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, .3), 0 10px 15px -5px rgba(0, 0, 0, .3), 0 7px 7px -5px rgba(0, 0, 0, .2);
   }
 }
 
@@ -38,7 +62,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -70,6 +94,7 @@ h1 { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 20px
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   padding: 18px 20px;
   margin-bottom: 28px;
   font-size: 15px;
@@ -83,6 +108,7 @@ h1 { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 20px
   background: var(--surface);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   padding: 18px 20px;
   margin-bottom: 24px;
 }
@@ -95,12 +121,19 @@ button {
   border: 1px solid transparent;
   padding: 12px 20px;
   cursor: pointer;
-  transition: opacity .15s, background .15s, border-color .15s;
+  transition: background .15s, border-color .15s, color .15s;
 }
 button:disabled { opacity: .45; cursor: default; }
+/* Кільце фокуса у Mantine — 2px акцентом з відступом, а не браузерний
+   дефолт: те саме вже стояло на textarea, тепер послідовно й на кнопках. */
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.primary { background: var(--accent); color: #fff; font-weight: 500; }
-.primary:hover:not(:disabled) { opacity: .88; }
+.primary { background: var(--accent); color: var(--on-accent); font-weight: 500; }
+/* Темнішає, а не тьмяніє — так у Mantine поводиться заливка кнопки на
+   ховері. filter, а не окремий токен кольору: простір може підмінити
+   --accent своїм брендовим кольором (app.js, space.accent), і ховер має
+   темнішати саме той колір, а не фіксований Mantine-відтінок. */
+.primary:hover:not(:disabled) { filter: brightness(.9); }
 .primary:disabled {
   background: transparent;
   border-color: var(--line);
@@ -137,6 +170,7 @@ blockquote#utterance {
   border: 1px solid var(--line);
   border-left: 3px solid var(--accent);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 .utterance-text {
   margin: 0;
@@ -294,13 +328,13 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   border-radius: 50%;
   background: var(--accent);
   border: 1px solid var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 15px;
   display: inline-flex; align-items: center; justify-content: center;
   transition: transform .15s ease, background .2s ease, border-color .2s ease, color .2s ease;
 }
 .talk:hover:not(:disabled) { transform: scale(1.02); }
-.talk[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: #fff; }
+.talk[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
 
 /* Пульс тільки під час запису: рухома окраса в спокої відволікає. */
 .talk-ring {
@@ -341,7 +375,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* ── Вибір голосу на екрані згоди ── */
 .voice-choice {
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px;
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 16px 18px; margin-bottom: 24px;
 }
 .voice-choice-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
 .voice-options { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -405,7 +440,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .answer-block {
   text-align: left; margin-bottom: 12px;
   background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 14px 16px 10px;
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  padding: 14px 16px 10px;
 }
 
 /* Кнопка правки стоїть під текстом, якого стосується, і праворуч. Абсолютне
@@ -534,6 +570,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
 }
 .record-check { display: flex; gap: 11px; align-items: flex-start; cursor: pointer; }
 .record-check input { margin: 3px 0 0; flex: none; width: 16px; height: 16px; }
@@ -606,7 +643,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .history-item {
   background: var(--surface); border: 1px solid var(--line);
   border-left: 2px solid var(--accent);
-  border-radius: var(--radius); padding: 14px 16px;
+  border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 14px 16px;
 }
 .history-q { font-size: 15px; line-height: 1.45; margin: 0 0 8px; }
 /* Те саме «про що варто сказати», що й на активному питанні — тут другорядне
