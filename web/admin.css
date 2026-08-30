@@ -60,7 +60,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 .section-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 6px; }
-.section-head h2 { font-size: 17px; margin: 0; }
+.section-head h2 { font-size: 19px; font-weight: 700; margin: 0; color: var(--heading); }
 button.small { padding: 6px 11px; font-size: 13px; }
 
 .topics-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }

@@ -3,6 +3,7 @@
 tests
 docs
 local
+design-system
 .git
 __pycache__
 *.pyc

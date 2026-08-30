@@ -16,6 +16,8 @@
 :root {
   --accent: #1971c2;        /* Mantine blue.8 — 4.76:1 як текст, 5.02:1 біло на ньому */
   --on-accent: #fff;        /* Текст/іконка поверх заливки --accent */
+  --heading: #1971c2;       /* Заголовки: те саме, що --accent, — світліший тут
+                                зник би на білому тлі. У темній темі інакше. */
   --bg: #f8f9fa;            /* Mantine gray.0 */
   --surface: #ffffff;
   --text: #212529;          /* Mantine gray.9 — 14.6:1 */
@@ -42,6 +44,9 @@
        білий. */
     --accent: #339af0;        /* Mantine blue.5 — 4.54:1 і як тло, і як текст */
     --on-accent: #141414;     /* 6.2:1 темного тексту на --accent */
+    --heading: #fff;          /* Чисто білий — акцентний синій лишається для
+                                  табів/кнопок/бордерів (--accent), заголовок
+                                  виділяється саме контрастом, а не кольором */
     --bg: #242424;            /* Mantine dark.7 */
     --surface: #2e2e2e;       /* Mantine dark.6 */
     --text: #c9c9c9;          /* Mantine dark.0 — 8.2:1 */
@@ -85,7 +90,9 @@ body {
 .hidden { display: none !important; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-h1 { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 20px; }
+/* Mantine headings.sizes.h1 (34px/700) — і колір навмисно акцентний, не
+   --text: заголовок мусить читатись першим, ще до основного тексту під ним. */
+h1 { font-size: 34px; font-weight: 700; letter-spacing: -.01em; margin: 0 0 20px; color: var(--heading); }
 /* pre-wrap: простір може дати текст із порожнім рядком між абзацами — і той
    порожній рядок мусить лишитись видимим, а не злитись у суцільний рядок. */
 .consent { color: var(--muted); margin: 0 0 24px; white-space: pre-wrap; }
@@ -634,7 +641,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* Так само нижча, як навігація над питанням: це рух по екранах, не
    підтвердження відповіді. */
 .history-head button { padding: 9px 16px; font-size: 14px; }
-.history-head h2 { font-size: 20px; font-weight: 600; margin: 0; }
+.history-head h2 { font-size: 22px; font-weight: 700; margin: 0; color: var(--heading); }
 .history-hint {
   max-width: 680px; margin: 0 auto 22px;
   font-size: 14px; color: var(--muted);
