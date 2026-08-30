@@ -60,8 +60,13 @@ def build_tts(cfg: Dict[str, Any]) -> Any:
     if provider == "piper":
         from .tts_piper import PiperTTS
 
+        # На відміну від espnet/mlx, ця модель (73 МБ, без torch) достатньо
+        # легка, щоб піти прямо в git і в Vercel-бандл — тому шлях за
+        # замовчуванням береться від кореня проєкту, а не лише з local/.
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        default_model = os.path.join(root, "voices", "piper", "uk_UA-ukrainian_tts-medium.onnx")
         return PiperTTS(
-            model_path=cfg.get("model_path") or os.environ.get("PIPER_MODEL", ""),
+            model_path=cfg.get("model_path") or os.environ.get("PIPER_MODEL") or default_model,
             voice=cfg.get("voice"),
             length_scale=cfg.get("length_scale"),
             sentence_silence=cfg.get("sentence_silence"),
