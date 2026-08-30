@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Веб-канал інтервʼю: сторінка респондента + голос у браузері.
 
-    python3 serve.py --space spaces/example                # заглушка, без витрат
-    .venv/bin/python serve.py --space spaces/example --llm anthropic
+Запускати з кореня проєкту (шляхи на кшталт `spaces/example` — відносні
+до робочої теки, а не до цього файлу):
+
+    python3 local/serve.py --space spaces/example                # заглушка, без витрат
+    .venv/bin/python local/serve.py --space spaces/example --llm anthropic
 """
 
 import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.api.server import serve
 from app.providers.base import ProviderError

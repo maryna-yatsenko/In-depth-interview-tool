@@ -3,7 +3,7 @@
 #
 # Сервер живе незалежно від будь-якої сесії Claude: логи в ~/Library/Logs,
 # pid у .server.pid. Зупинити — ./stop.command
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1
 
 SPACE="${1:-spaces/example}"
 PORT="${PORT:-8770}"
@@ -24,12 +24,12 @@ PY=python3
 [ -x ".venv/bin/python" ] && PY=".venv/bin/python"
 
 # Локальна модель лежить у теці проєкту, а не в домашньому кеші.
-export HF_HOME="$PWD/models/hf"
+export HF_HOME="$PWD/local/models/hf"
 
 ARGS=(--space "$SPACE" --port "$PORT" --admin)
 [ -n "$LLM" ] && ARGS+=(--llm "$LLM")
 echo "Простір: $SPACE | модель: ${LLM:-з конфігу простору} | порт: $PORT"
-nohup "$PY" serve.py "${ARGS[@]}" >> "$LOG" 2>&1 &
+nohup "$PY" local/serve.py "${ARGS[@]}" >> "$LOG" 2>&1 &
 echo $! > "$PIDFILE"
 sleep 2
 

@@ -4,16 +4,19 @@
 Навіщо термінал, а не веб: на цьому етапі перевіряється якість інтервʼю, а не
 інтерфейс. Веб і голос — Етап 2, і вони не змінять нічого в ядрі.
 
-    python3 cli.py --space spaces/example                 # прогін на заглушці
-    python3 cli.py --space spaces/example --llm anthropic # справжня модель
-    python3 cli.py --space spaces/example --llm mock --auto  # без участі людини
+Запускати з кореня проєкту (шляхи на кшталт `spaces/example` — відносні
+до робочої теки, а не до цього файлу):
+
+    python3 local/cli.py --space spaces/example                 # прогін на заглушці
+    python3 local/cli.py --space spaces/example --llm anthropic # справжня модель
+    python3 local/cli.py --space spaces/example --llm mock --auto  # без участі людини
 """
 
 import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config.env import has_key, load_env
 from app.config.space import ConfigError, load_space_dir

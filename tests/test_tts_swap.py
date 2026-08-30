@@ -152,7 +152,7 @@ class TestEspnetCache(unittest.TestCase):
         self.audio = os.path.join(self.tmp, "audio")
         # Реальні шляхи потрібні лише для перевірки існування у конструкторі.
         self.python = sys.executable
-        self.worker = os.path.join(ROOT, "bin", "espnet_worker.py")
+        self.worker = os.path.join(ROOT, "local", "bin", "espnet_worker.py")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)

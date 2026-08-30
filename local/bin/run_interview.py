@@ -6,8 +6,8 @@
 інтервʼюер справді не питає зайвого, коли людина відповіла повно, і чи питає,
 коли відповідь тонка.
 
-    .venv/bin/python bin/run_interview.py --out звіт.md
-    .venv/bin/python bin/run_interview.py --thin idea   # тонкі відповіді на тему
+    .venv/bin/python local/bin/run_interview.py --out звіт.md
+    .venv/bin/python local/bin/run_interview.py --thin idea   # тонкі відповіді на тему
 
 Відповіді підібрані під теми гайда «подорожі компанією»: кожна закриває обидва
 пункти `must_learn`. Тема обирається за підписом фази, який віддає сервер.

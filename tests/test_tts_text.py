@@ -110,7 +110,7 @@ class TestNormalize(unittest.TestCase):
         """Головна гарантія: на виході немає нічого, чого модель не знає."""
         import json
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config = os.path.join(root, "models", "uk_UA-ukrainian_tts-medium.onnx.json")
+        config = os.path.join(root, "local", "models", "uk_UA-ukrainian_tts-medium.onnx.json")
         if not os.path.isfile(config):
             self.skipTest("немає моделі для перевірки алфавіту")
         with open(config, encoding="utf-8") as fh:
@@ -164,7 +164,7 @@ class TestStress(unittest.TestCase):
     def test_output_still_within_model_alphabet(self):
         import json
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config = os.path.join(root, "models", "uk_UA-ukrainian_tts-medium.onnx.json")
+        config = os.path.join(root, "local", "models", "uk_UA-ukrainian_tts-medium.onnx.json")
         if not os.path.isfile(config):
             self.skipTest("немає моделі")
         with open(config, encoding="utf-8") as fh:

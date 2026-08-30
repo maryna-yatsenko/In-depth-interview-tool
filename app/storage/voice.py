@@ -14,7 +14,7 @@
   сказала «цього не було», отже цього не має бути й на диску;
 - розмір одного файлу обмежений, щоб помилка в браузері не залила диск.
 
-Розкладка: `data/voice/<session_id>/<номер>.<розширення>`.
+Розкладка: `local/data/voice/<session_id>/<номер>.<розширення>`.
 """
 
 import os
@@ -22,7 +22,7 @@ from typing import List, Optional
 
 from . import db as _db
 
-VOICE_DIR = os.path.join(os.getcwd(), "data", "voice")
+VOICE_DIR = os.path.join(os.getcwd(), "local", "data", "voice")
 
 
 def _on_postgres() -> bool:

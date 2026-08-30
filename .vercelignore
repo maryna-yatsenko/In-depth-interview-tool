@@ -1,9 +1,8 @@
 .venv
 .venv-espnet
-models
-data
 tests
 docs
+local
 .git
 __pycache__
 *.pyc

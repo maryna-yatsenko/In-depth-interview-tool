@@ -23,11 +23,11 @@ from app.providers.tts_piper import PiperTTS, _find_piper
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLE = os.path.join(ROOT, "spaces", "example")
-MODEL = os.path.join(ROOT, "models", "uk_UA-ukrainian_tts-medium.onnx")
+MODEL = os.path.join(ROOT, "local", "models", "uk_UA-ukrainian_tts-medium.onnx")
 READY = _find_piper() is not None and os.path.isfile(MODEL)
 
 
-@unittest.skipUnless(READY, "потрібні piper і модель у models/")
+@unittest.skipUnless(READY, "потрібні piper і модель у local/models/")
 class TestPiper(unittest.TestCase):
     def test_finds_binary_next_to_interpreter(self):
         """Сервер запускається як .venv/bin/python, і теки .venv/bin у PATH немає."""
@@ -48,7 +48,7 @@ class TestPiper(unittest.TestCase):
 
     def test_missing_model_file_rejected(self):
         with self.assertRaises(ProviderError):
-            PiperTTS(model_path=os.path.join(ROOT, "models", "немає.onnx"))
+            PiperTTS(model_path=os.path.join(ROOT, "local", "models", "немає.onnx"))
 
     def test_synthesizes_wav_for_each_voice(self):
         for name in ("lada", "mykyta", "tetiana"):

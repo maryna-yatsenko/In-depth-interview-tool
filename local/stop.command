@@ -1,6 +1,6 @@
 #!/bin/bash
 # Зупинка інструменту.
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1
 PIDFILE=".server.pid"
 
 if [ -f "$PIDFILE" ]; then
@@ -25,5 +25,5 @@ if [ -f "$PIDFILE" ]; then
   rm -f "$PIDFILE"
 else
   echo "Файла .server.pid немає — можливо, сервер запускали вручну."
-  pgrep -fl "serve.py" || echo "Запущених серверів не знайдено."
+  pgrep -fl "local/serve.py" || echo "Запущених серверів не знайдено."
 fi

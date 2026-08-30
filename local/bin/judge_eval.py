@@ -4,9 +4,9 @@
 
 Без цієї мірки «стало краще» — це відчуття. Тут це число.
 
-    .venv/bin/python bin/judge_eval.py                # поточний промпт
-    .venv/bin/python bin/judge_eval.py --prompt quote # промпт із цитатою
-    .venv/bin/python bin/judge_eval.py --model mlx-community/gemma-3-12b-it-4bit
+    .venv/bin/python local/bin/judge_eval.py                # поточний промпт
+    .venv/bin/python local/bin/judge_eval.py --prompt quote # промпт із цитатою
+    .venv/bin/python local/bin/judge_eval.py --model mlx-community/gemma-3-12b-it-4bit
 
 Що показує:
   точність     — скільки випадків із еталону вгадано;
@@ -25,9 +25,9 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CASES = os.path.join(ROOT, "tests", "data", "judge_cases.json")
 
 

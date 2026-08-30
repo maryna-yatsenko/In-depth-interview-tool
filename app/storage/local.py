@@ -1,24 +1,30 @@
 """Локальне сховище: завершені транскрипти і стан незавершених інтервʼю.
 
-Дві теки з різними правилами, і різниця тут принципова:
+Три теки з різними правилами, і різниця тут принципова:
 
-- `data/sessions/` — **завершені транскрипти**. Первинні дані дослідження:
-  пишуться один раз, перезапис заборонений.
-- `data/live/` — **стан незавершених** інтервʼю. Перезаписується після кожної
-  репліки, видаляється після завершення. Це закриває TD-5: перезапуск сервера
-  більше не губить розмову, і респондент може продовжити по тому самому посиланню.
+- `local/data/sessions/` — **завершені транскрипти**, JSON. Первинні дані
+  дослідження: пишуться один раз, перезапис заборонений.
+- `local/data/live/` — **стан незавершених** інтервʼю. Перезаписується після
+  кожної репліки, видаляється після завершення. Це закриває TD-5: перезапуск
+  сервера більше не губить розмову, і респондент може продовжити по тому
+  самому посиланню.
+- `local/data/responses/` — те саме, що й `sessions/`, але розкладено по
+  теках для людини, а не для коду: одна тека на респондента, у ній — одна
+  тека на кожне питання з `питання.txt`/`відповідь.txt`. Похідне (JSON у
+  `sessions/` лишається єдиним джерелом істини), тому цю теку можна вільно
+  чистити й перегенеровувати — вона просто зручніша для ручного перегляду.
 """
 
 import json
 import os
 import shutil
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import db as _db
 from . import voice as _voice
 
-DEFAULT_DIR = os.path.join(os.getcwd(), "data", "sessions")
-LIVE_DIR = os.path.join(os.getcwd(), "data", "live")
+DEFAULT_DIR = os.path.join(os.getcwd(), "local", "data", "sessions")
+LIVE_DIR = os.path.join(os.getcwd(), "local", "data", "live")
 
 
 def _on_postgres() -> bool:
@@ -60,6 +66,60 @@ def _write_atomic(path: str, payload: Dict[str, Any]) -> None:
 
 # ── завершені транскрипти ────────────────────────────────────────────────
 
+def _slug(text: str, limit: int = 40) -> str:
+    """Питання — у назву теки: лишаємо літери/цифри/пробіли, пробіли — в дефіси."""
+    cleaned = "".join(ch for ch in (text or "").strip() if ch.isalnum() or ch in " -")
+    return "-".join(cleaned.split())[:limit].strip("-") or "питання"
+
+
+def _qa_pairs(turns: List[Dict[str, Any]]) -> List[Tuple[str, Optional[str]]]:
+    """Репліки — плаский список `interviewer`/`respondent` по черзі. Пара —
+    питання інтервʼюера і відповідь одразу після нього (якщо респондент
+    ще не встиг відповісти — там `None`, а не вигадана відповідь)."""
+    pairs = []
+    i, n = 0, len(turns)
+    while i < n:
+        if turns[i].get("role") == "interviewer":
+            question = turns[i].get("text", "")
+            answer = None
+            if i + 1 < n and turns[i + 1].get("role") == "respondent":
+                answer = turns[i + 1].get("text", "")
+                i += 2
+            else:
+                i += 1
+            pairs.append((question, answer))
+        else:
+            i += 1
+    return pairs
+
+
+def _respondent_folder(payload: Dict[str, Any]) -> str:
+    started = (payload.get("started_at") or "").replace("-", "").replace(":", "").replace("T", "-")
+    short_id = _safe_id(payload["session_id"])[:6]
+    return "%s_%s" % (started or "невідомо-коли", short_id)
+
+
+def _export_responses(payload: Dict[str, Any], sessions_dir: str) -> None:
+    """Похідна, читабельна копія `sessions/` — не джерело істини, тому без
+    атомарного запису й без заборони перезапису: просто розкладає те саме
+    по теках, щоб можна було відкрити Finder і подивитись, а не парсити JSON.
+
+    Тека — сусідня з тим, куди щойно ліг сам JSON (`sessions_dir`), а не
+    окрема глобальна константа: `DEFAULT_DIR` тести підміняють на тимчасову
+    теку (`test_api.py`), і якщо рахувати звідси, а не від власної незалежної
+    змінної, підміна сама поширюється й сюди — без цього кожен такий тест
+    писав би читабельний розклад у справжню теку проєкту, а не в пісочницю.
+    """
+    folder = os.path.join(os.path.dirname(sessions_dir), "responses", _respondent_folder(payload))
+    for idx, (question, answer) in enumerate(_qa_pairs(payload.get("turns") or []), start=1):
+        qdir = os.path.join(folder, "%02d-%s" % (idx, _slug(question)))
+        os.makedirs(qdir, exist_ok=True)
+        with open(os.path.join(qdir, "питання.txt"), "w", encoding="utf-8") as fh:
+            fh.write(question or "")
+        with open(os.path.join(qdir, "відповідь.txt"), "w", encoding="utf-8") as fh:
+            fh.write("(без відповіді)" if answer is None else answer)
+
+
 def save_session(payload: Dict[str, Any], directory: Optional[str] = None) -> str:
     if _on_postgres():
         return _db.save_session(payload)
@@ -69,6 +129,7 @@ def save_session(payload: Dict[str, Any], directory: Optional[str] = None) -> st
     if os.path.exists(path):
         raise FileExistsError("Сесія вже збережена: %s" % path)
     _write_atomic(path, payload)
+    _export_responses(payload, directory)
     return path
 
 

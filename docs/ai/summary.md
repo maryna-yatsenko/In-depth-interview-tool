@@ -131,7 +131,7 @@ AI-інтервʼюер, який налаштовується під будь-�
 локальний і безкоштовний назавжди:
 
 - **LLM:** локальна модель через MLX (Apple Silicon), `gemma-3-4b-it-4bit`,
-  3,2 ГБ у `models/hf/`. 2,7–3,1 с на питання. Без акаунта, дані не покидають машину.
+  3,2 ГБ у `local/models/hf/`. 2,7–3,1 с на питання. Без акаунта, дані не покидають машину.
 - **TTS:** ESPnet `ukrainian-tts`, 5 голосів, власні наголоси.
 - **STT:** Web Speech браузера.
 
@@ -186,12 +186,12 @@ Adapter-шар лишається: `anthropic` і `azure` написані, і �
 
 ## Команди
 
-- **Запуск (не залежить від сесії Claude):** `./start.command` → сам відкриє `http://127.0.0.1:8770`; зупинка `./stop.command`
-- Запуск вручну: `python3 serve.py --space spaces/example --llm mock --admin`
+- **Запуск (не залежить від сесії Claude):** `./local/start.command` → сам відкриє `http://127.0.0.1:8770`; зупинка `./local/stop.command`
+- Запуск вручну: `python3 local/serve.py --space spaces/example --llm mock --admin`
 - **Панель дослідника:** додати `--admin` → `http://127.0.0.1:8770/admin` (за замовчуванням її немає — див. TD-7)
-- Прогін у терміналі (без ключа й витрат): `python3 cli.py --space spaces/example --llm mock --auto --no-save`
-- Побачити guard у роботі: `python3 cli.py --space spaces/example --llm mock_bad --auto --no-save`
-- Справжнє інтервʼю: `.venv/bin/python cli.py --space spaces/example --llm anthropic`
+- Прогін у терміналі (без ключа й витрат): `python3 local/cli.py --space spaces/example --llm mock --auto --no-save`
+- Побачити guard у роботі: `python3 local/cli.py --space spaces/example --llm mock_bad --auto --no-save`
+- Справжнє інтервʼю: `.venv/bin/python local/cli.py --space spaces/example --llm anthropic`
   (ключ — у `.env` у корені, файл у `.gitignore`)
 - Тести: `.venv/bin/python -m unittest discover -s tests` (венвівський — інакше Piper і ESPnet пропускаються)
 - Перевірка парсингу JS: `bun -e "new Function(require('fs').readFileSync('web/app.js','utf8'))"`

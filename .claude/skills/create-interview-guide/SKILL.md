@@ -122,7 +122,7 @@ python3 -c "from app.config.space import load_space_dir; load_space_dir('spaces/
 ### 6. Запусти й пройди самостійно хоча б перше питання
 
 ```bash
-./start.command spaces/<key>
+./local/start.command spaces/<key>
 ```
 і відкрий `http://127.0.0.1:8770`. Переконайся, що:
 - заголовок і текст згоди — саме те, що писала людина, а не заглушка;

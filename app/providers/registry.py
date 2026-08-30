@@ -76,9 +76,9 @@ def build_tts(cfg: Dict[str, Any]) -> Any:
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         return EspnetTTS(
             python_path=cfg.get("python_path") or os.path.join(root, ".venv-espnet", "bin", "python"),
-            worker_path=cfg.get("worker_path") or os.path.join(root, "bin", "espnet_worker.py"),
-            cache_folder=cfg.get("model_cache") or os.path.join(root, "models", "espnet-cache"),
-            audio_cache=cfg.get("audio_cache") or os.path.join(root, "data", "tts-cache"),
+            worker_path=cfg.get("worker_path") or os.path.join(root, "local", "bin", "espnet_worker.py"),
+            cache_folder=cfg.get("model_cache") or os.path.join(root, "local", "models", "espnet-cache"),
+            audio_cache=cfg.get("audio_cache") or os.path.join(root, "local", "data", "tts-cache"),
             voice=cfg.get("voice"),
             stress=cfg.get("stress", "dictionary"),
         )
