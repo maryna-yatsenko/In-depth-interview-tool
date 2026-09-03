@@ -10,33 +10,32 @@
 машину.** Ні тексту питань, ні голосу. Порівняй із браузерним розпізнаванням
 (TD-6), яке відправляє аудіо респондента вендору браузера.
 
+Синтез — через Python API пакета `piper` (`PiperVoice`/`SynthesisConfig`), не
+через окремий бінарник `piper` командного рядка. Так було раніше (subprocess +
+пошук бінарника поруч з інтерпретатором чи в PATH) — і саме це впало на
+Vercel: `pip install` кладе пакет, але не гарантує, що консольний скрипт
+опиниться там, де його шукає `shutil.which`/сусідство з `sys.executable` в
+серверлес-рантаймі. Прямий виклик Python-класу цієї проблеми не має в
+принципі — це той самий процес, а не окремий, якого треба ще знайти.
+
 Модель береться з локального файла; звідки він узявся — справа встановлення,
 а не коду. Шлях і голос задаються в конфізі простору.
 """
 
+import io
 import json
 import os
-import shutil
-import subprocess
-import sys
-import tempfile
+import wave
 from typing import List, Optional
 
 from .base import ProviderError, TTSProvider
 from .tts_text import normalize
 
-
-def _find_piper() -> Optional[str]:
-    """Шукати поруч із поточним інтерпретатором, а не лише в PATH.
-
-    Сервер запускається як `.venv/bin/python serve.py`, і теки `.venv/bin` у
-    PATH при цьому немає — `shutil.which` бінарник не знайшов би, хоча він
-    установлений у тому самому venv.
-    """
-    beside = os.path.join(os.path.dirname(sys.executable), "piper")
-    if os.path.isfile(beside) and os.access(beside, os.X_OK):
-        return beside
-    return shutil.which("piper")
+try:
+    from piper import PiperVoice, SynthesisConfig
+except ImportError:
+    PiperVoice = None
+    SynthesisConfig = None
 
 
 class PiperTTS(TTSProvider):
@@ -47,31 +46,28 @@ class PiperTTS(TTSProvider):
         self,
         model_path: str,
         voice: Optional[str] = None,
-        binary: Optional[str] = None,
         length_scale: Optional[float] = None,
         sentence_silence: Optional[float] = None,
         noise_scale: Optional[float] = None,
         noise_w_scale: Optional[float] = None,
         add_stress: bool = True,
-        timeout: int = 120,
     ):
-        self.binary = binary or _find_piper()
-        if not self.binary:
+        if PiperVoice is None:
             raise ProviderError(
-                "Piper не встановлений (немає команди `piper`). Встановлення — "
-                "разова дія, див. README → «Приємний голос»."
+                "Пакет `piper` не встановлений. Встановлення — разова дія, "
+                "див. README → «Приємний голос»."
             )
         if not model_path or not os.path.isfile(model_path):
             raise ProviderError("Не знайдено файл моделі Piper: %s" % model_path)
 
         self.model_path = model_path
         self.config_path = model_path + ".json"
+        self._voice = PiperVoice.load(model_path, config_path=self.config_path)
         # length_scale > 1 — повільніше. Це не «швидкість читання» рушія, а
         # параметр самої моделі, тому звучить природніше за пост-обробку.
         self.length_scale = length_scale
-        # Пауза після кожного речення — робить сама модель. Це чистіше за
-        # різання тексту на куски збоку: рушій знає, де межа речення, і
-        # інтонація не скидається посеред фрази.
+        # Пауза між реченнями — рушій моделі її не знає (одна модель = одна
+        # цілісна фраза), тому вставляємо тишу самі, між шматками по реченнях.
         self.sentence_silence = sentence_silence
         # Шум генератора VITS. Це не декор: за типових значень той самий текст
         # звучить по-різному від разу до разу — виміряно 0,94 с розкиду
@@ -79,7 +75,6 @@ class PiperTTS(TTSProvider):
         # але й пласкішу інтонацію. Компроміс обирає людина, не код.
         self.noise_scale = noise_scale
         self.noise_w_scale = noise_w_scale
-        self.timeout = timeout
         # Наголоси: модель навчена їх читати, тому за замовчуванням ставимо.
         self.add_stress = add_stress
         # Звіт про останню нормалізацію: що саме довелось перетворити.
@@ -92,16 +87,9 @@ class PiperTTS(TTSProvider):
     # ── голоси моделі ────────────────────────────────────────────────────
 
     def _read_speakers(self) -> dict:
-        """Мапа «ім'я → id» із конфігу моделі. Нічого не вигадуємо: якщо модель
-        односпікерна, мапа порожня, і параметр голосу просто не застосовується."""
-        if not os.path.isfile(self.config_path):
-            return {}
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as fh:
-                config = json.load(fh)
-        except (OSError, ValueError):
-            return {}
-        mapping = config.get("speaker_id_map") or {}
+        """Мапа «ім'я → id» із конфігу моделі, який уже завантажив PiperVoice —
+        нічого не вигадуємо: якщо модель односпікерна, мапа порожня."""
+        mapping = getattr(self._voice.config, "speaker_id_map", None) or {}
         return {str(name): int(index) for name, index in mapping.items()}
 
     def _require_known_voice(self, name: str) -> None:
@@ -126,34 +114,16 @@ class PiperTTS(TTSProvider):
         ]
 
     def _locale(self) -> str:
+        # `PiperConfig` (розібраний PiperVoice.load) не носить це поле — воно
+        # лише в сирому JSON моделі, тому читаємо файл конфігу напряму.
         try:
             with open(self.config_path, "r", encoding="utf-8") as fh:
-                config = json.load(fh)
-            return (config.get("language") or {}).get("code", "")
+                raw_config = json.load(fh)
         except (OSError, ValueError):
             return ""
+        return (raw_config.get("language") or {}).get("code", "")
 
     # ── синтез ───────────────────────────────────────────────────────────
-
-    def build_command(self, output_path: str, voice: Optional[str] = None) -> List[str]:
-        """Команда для piper. Винесено окремо, щоб її перевіряв тест.
-
-        Модель нестабільна (див. noise_scale), тому перевіряти передачу
-        параметрів через довжину аудіо неможливо — розкид тривалості перекриває
-        будь-який ефект. Перевіряємо те, що справді контролюємо: сам виклик.
-        """
-        command = [self.binary, "--model", self.model_path, "--output_file", output_path]
-        if voice and self._speakers:
-            command += ["--speaker", str(self._speakers[voice])]
-        if self.length_scale:
-            command += ["--length_scale", str(self.length_scale)]
-        if self.sentence_silence is not None:
-            command += ["--sentence_silence", str(self.sentence_silence)]
-        if self.noise_scale is not None:
-            command += ["--noise_scale", str(self.noise_scale)]
-        if self.noise_w_scale is not None:
-            command += ["--noise_w_scale", str(self.noise_w_scale)]
-        return command
 
     def synthesize(self, text: str, voice: Optional[str] = None) -> bytes:
         # Модель символьна: цифри, латиниця й великі літери в її алфавіті
@@ -167,30 +137,32 @@ class PiperTTS(TTSProvider):
         if chosen:
             self._require_known_voice(chosen)
 
-        handle, path = tempfile.mkstemp(suffix=".wav")
-        os.close(handle)
-        try:
-            command = self.build_command(path, chosen)
-            try:
-                result = subprocess.run(
-                    command,
-                    input=clean.encode("utf-8"),
-                    capture_output=True,
-                    timeout=self.timeout,
-                )
-            except subprocess.TimeoutExpired:
-                raise ProviderError("Piper не відповів за %d секунд" % self.timeout)
+        syn_config = SynthesisConfig(
+            speaker_id=self._speakers.get(chosen) if chosen else None,
+            length_scale=self.length_scale,
+            noise_scale=self.noise_scale,
+            noise_w_scale=self.noise_w_scale,
+        )
 
-            if result.returncode != 0:
-                raise ProviderError(
-                    "Piper завершився з помилкою: %s"
-                    % (result.stderr or b"").decode("utf-8", "replace")[:300]
-                )
-            if not os.path.exists(path) or os.path.getsize(path) == 0:
-                raise ProviderError("Piper не створив аудіо (порожній файл)")
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wav_file:
+            first_chunk = True
+            silence_frames = b""
+            for chunk in self._voice.synthesize(clean, syn_config=syn_config):
+                if first_chunk:
+                    wav_file.setframerate(chunk.sample_rate)
+                    wav_file.setsampwidth(chunk.sample_width)
+                    wav_file.setnchannels(chunk.sample_channels)
+                    if self.sentence_silence:
+                        n_samples = int(chunk.sample_rate * self.sentence_silence)
+                        silence_frames = b"\x00\x00" * n_samples
+                    first_chunk = False
+                elif silence_frames:
+                    wav_file.writeframes(silence_frames)
+                wav_file.writeframes(chunk.audio_int16_bytes)
 
-            with open(path, "rb") as fh:
-                return fh.read()
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        if first_chunk:
+            # Жодного шматка не прийшло (наприклад, після нормалізації лишились
+            # самі символи поза алфавітом моделі) — порожнє аудіо, не помилка.
+            return b""
+        return buf.getvalue()

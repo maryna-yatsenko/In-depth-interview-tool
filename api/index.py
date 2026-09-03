@@ -22,6 +22,7 @@ from app.api.server import SessionStore, TtsHolder, make_handler
 from app.config.env import load_env
 from app.config.phrases import load_bank
 from app.config.resolve import load_resolved_space
+from app.providers.base import ProviderError
 from app.providers.registry import build_tts
 
 load_env()
@@ -36,7 +37,17 @@ space, guide = load_resolved_space(_SPACES_ROOT, _SPACE_KEY)
 
 llm_cfg = dict(space.providers.get("llm", {}) or {})
 tts_cfg = dict(space.providers.get("tts", {}) or {})
-holder = TtsHolder(build_tts(tts_cfg))
+# Озвучення — не критичний шлях: респондент і без нього відповідає й отримує
+# питання текстом (браузер сам може прочитати вголос). Провайдер, що впав на
+# холодному старті, раніше валив імпорт usього модуля — а це той самий клас
+# `handler`, тому падав узагалі весь сайт, а не лише голос. TtsHolder(None) —
+# той самий безпечний стан, що й при "provider": "none"/"browser".
+try:
+    tts = build_tts(tts_cfg)
+except ProviderError as exc:
+    print("⛔ TTS-провайдер не піднявся, працюємо без серверного озвучення: %s" % exc)
+    tts = None
+holder = TtsHolder(tts)
 
 _space_dir = os.path.join(_SPACES_ROOT, _SPACE_KEY)
 bank_provider = lambda: load_bank(_space_dir)  # noqa: E731 — те саме, що robить serve.py

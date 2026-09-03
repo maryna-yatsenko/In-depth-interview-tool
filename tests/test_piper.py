@@ -19,20 +19,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.api.server import PREVIEW_TEXT, serve
 from app.config.space import load_space_dir
 from app.providers.base import ProviderError
-from app.providers.tts_piper import PiperTTS, _find_piper
+from app.providers.tts_piper import PiperTTS
+
+try:
+    import piper as _piper_pkg
+except ImportError:
+    _piper_pkg = None
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXAMPLE = os.path.join(ROOT, "spaces", "example")
-MODEL = os.path.join(ROOT, "local", "models", "uk_UA-ukrainian_tts-medium.onnx")
-READY = _find_piper() is not None and os.path.isfile(MODEL)
+MODEL = os.path.join(ROOT, "voices", "piper", "uk_UA-ukrainian_tts-medium.onnx")
+READY = _piper_pkg is not None and os.path.isfile(MODEL)
 
 
-@unittest.skipUnless(READY, "потрібні piper і модель у local/models/")
+@unittest.skipUnless(READY, "потрібен пакет piper і модель у voices/piper/")
 class TestPiper(unittest.TestCase):
-    def test_finds_binary_next_to_interpreter(self):
-        """Сервер запускається як .venv/bin/python, і теки .venv/bin у PATH немає."""
-        self.assertTrue(_find_piper())
-
     def test_lists_three_ukrainian_voices(self):
         voices = PiperTTS(model_path=MODEL).voices()
         names = sorted(v["name"] for v in voices)
@@ -48,7 +49,7 @@ class TestPiper(unittest.TestCase):
 
     def test_missing_model_file_rejected(self):
         with self.assertRaises(ProviderError):
-            PiperTTS(model_path=os.path.join(ROOT, "local", "models", "немає.onnx"))
+            PiperTTS(model_path=os.path.join(ROOT, "voices", "piper", "немає.onnx"))
 
     def test_synthesizes_wav_for_each_voice(self):
         for name in ("lada", "mykyta", "tetiana"):
@@ -62,24 +63,48 @@ class TestPiper(unittest.TestCase):
         b = PiperTTS(model_path=MODEL, voice="tetiana").synthesize(text)
         self.assertNotEqual(a, b, "вибір голосу не застосувався")
 
-    def test_parameters_reach_the_command(self):
+    def test_parameters_reach_synthesis_config(self):
         """Через нестабільність моделі (розкид тривалості до 0,94 с) перевіряти
         передачу параметрів по довжині аудіо неможливо — перевіряємо виклик."""
         piper = PiperTTS(model_path=MODEL, voice="mykyta", length_scale=1.1,
                          sentence_silence=0.4, noise_scale=0.35, noise_w_scale=0.4)
-        command = piper.build_command("/tmp/out.wav", "mykyta")
-        self.assertIn("--speaker", command)
-        self.assertEqual(command[command.index("--speaker") + 1], "1")
-        self.assertEqual(command[command.index("--length_scale") + 1], "1.1")
-        self.assertEqual(command[command.index("--sentence_silence") + 1], "0.4")
-        self.assertEqual(command[command.index("--noise_scale") + 1], "0.35")
-        self.assertEqual(command[command.index("--noise_w_scale") + 1], "0.4")
+        seen = {}
+        original = piper._voice.synthesize
+
+        def spy(text, syn_config=None, **kwargs):
+            seen["config"] = syn_config
+            return original(text, syn_config=syn_config, **kwargs)
+
+        piper._voice.synthesize = spy
+        try:
+            piper.synthesize("Один два три.")
+        finally:
+            piper._voice.synthesize = original
+        config = seen["config"]
+        self.assertEqual(config.speaker_id, 1)
+        self.assertEqual(config.length_scale, 1.1)
+        self.assertEqual(config.noise_scale, 0.35)
+        self.assertEqual(config.noise_w_scale, 0.4)
 
     def test_optional_parameters_omitted_when_unset(self):
-        command = PiperTTS(model_path=MODEL).build_command("/tmp/out.wav", None)
-        for flag in ("--speaker", "--length_scale", "--sentence_silence",
-                     "--noise_scale", "--noise_w_scale"):
-            self.assertNotIn(flag, command)
+        piper = PiperTTS(model_path=MODEL)
+        seen = {}
+        original = piper._voice.synthesize
+
+        def spy(text, syn_config=None, **kwargs):
+            seen["config"] = syn_config
+            return original(text, syn_config=syn_config, **kwargs)
+
+        piper._voice.synthesize = spy
+        try:
+            piper.synthesize("Один два три.")
+        finally:
+            piper._voice.synthesize = original
+        config = seen["config"]
+        self.assertIsNone(config.speaker_id)
+        self.assertIsNone(config.length_scale)
+        self.assertIsNone(config.noise_scale)
+        self.assertIsNone(config.noise_w_scale)
 
     def test_zero_noise_makes_output_reproducible(self):
         """Нульовий шум = однакове аудіо для всіх респондентів. Це методологічна
