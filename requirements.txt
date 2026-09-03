@@ -16,8 +16,11 @@ psycopg2-binary>=2.9.9
 # Piper — без torch (лише onnxruntime), тому, на відміну від ESPnet, влазить
 # у бандл: сам пакет ~170 МБ + модель voices/piper/ (73 МБ) ≈ 250 МБ, разом з
 # рештою все ще під новим лімітом Vercel для Python-функцій (500 МБ, 2026).
-# Наголоси (ukrainian-word-stress) сюди свідомо НЕ входять — пакет вимагає
-# stanza/torch як жорстку залежність, а requirements.txt не вміє --no-deps
-# для одного рядка; без нього ядро (tts_text.normalize) просто не розставляє
-# наголоси, а не падає — деградація, а не збій.
 piper-tts>=1.7.0
+
+# Наголоси (для tts_text.normalize) — лише marisa-trie: сам словник
+# ukrainian-word-stress тут НЕ ставиться через pip (той затягнув би
+# stanza/PyTorch — requirements.txt не вміє --no-deps для одного рядка), а
+# вкопійований напряму в vendor/ (README.md там пояснює чому це безпечно).
+# marisa-trie — лише 1,4 МБ і без важких залежностей, ставити нормально.
+marisa-trie>=1.2.1

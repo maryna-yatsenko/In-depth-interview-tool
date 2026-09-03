@@ -13,7 +13,9 @@
 **повідомляється**, а не викидається молча.
 """
 
+import os
 import re
+import sys
 from typing import Dict, List, Tuple
 
 # Апостроф у моделі — звичайний ASCII, а не типографський «ʼ». Це не дрібниця:
@@ -62,7 +64,18 @@ def _get_stressifier():
     if _stress_state != "unknown":
         return _stressifier
     try:
-        from ukrainian_word_stress import Disambiguation, Stressifier, StressSymbol
+        try:
+            from ukrainian_word_stress import Disambiguation, Stressifier, StressSymbol
+        except ImportError:
+            # На Vercel пакет не через pip (той затягнув би stanza й PyTorch
+            # — див. vendor/README.md), а вкопійований напряму в репозиторій.
+            vendor = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "vendor",
+            )
+            if vendor not in sys.path:
+                sys.path.insert(0, vendor)
+            from ukrainian_word_stress import Disambiguation, Stressifier, StressSymbol
 
         # Словниковий режим: без stanza й PyTorch. Неоднозначні слова
         # (омографи «за́мок» / «замо́к») лишаються без наголосу — модель угадає
