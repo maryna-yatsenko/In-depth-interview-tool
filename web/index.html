@@ -93,17 +93,6 @@
         </div>
       </blockquote>
 
-      <!-- Що ми хочемо почути в цій темі. Галочка зʼявляється, коли пункт
-           зараховано — тоді людина бачить, чого від неї чекають, і не лишається
-           наодинці з одним питанням. Стоїть останнім у прокрутній частині:
-           це найважливіше після самого питання, тому має бути на видноті. -->
-      <div id="checklist" class="checklist hidden">
-        <span class="checklist-title"><span id="checklist-title-text">Хочемо
-          почути:</span><span id="checklist-mark"
-          class="checklist-checking hidden" aria-hidden="true"></span></span>
-        <ul id="checklist-items"></ul>
-      </div>
-
       </div><!-- /interview-scroll -->
 
       <!-- Голосовий режим: без поля введення. Порядок навмисний — текст
@@ -114,6 +103,17 @@
              Це навмисне обмеження: голос лишається первинним джерелом, а не
              чернеткою, яку можна тихо підправити. -->
         <div class="answer-block">
+          <!-- Що ми хочемо почути в цій темі — у тій самій картці, що й
+               записаний текст: раніше стояло в прокрутній частині вище й
+               могло «поїхати» за екран, поки записаний текст лишався на
+               місці. Тепер обидва завжди на очах одночасно. Галочка
+               зʼявляється, коли пункт зараховано. -->
+          <div id="checklist" class="checklist hidden">
+            <span class="checklist-title"><span id="checklist-title-text">Хочемо
+              почути:</span><span id="checklist-mark"
+              class="checklist-checking hidden" aria-hidden="true"></span></span>
+            <ul id="checklist-items"></ul>
+          </div>
           <p id="heard" class="heard" aria-live="polite"></p>
           <!-- Смуга відтворення власного запису: скільки вже прозвучало.
                Показується лише під час прослуховування. -->
@@ -137,25 +137,30 @@
           </div>
         </div>
 
-        <!-- Надіслати — головна дія, тому праймер і праворуч, де рука очікує
-             головну кнопку; «Сказати заново» — другорядна, ліворуч від неї. -->
-        <div class="answer-actions">
-          <button id="btn-voice-again" class="ghost" disabled
-                  title="Стерти сказане й почати відповідь заново">
-            ↺ Сказати заново
-          </button>
-          <button id="btn-send-answer" class="primary" disabled>Надіслати відповідь</button>
+        <!-- Говорити — ліворуч, окремо від пари дій над відповіддю: це інша
+             дія (новий запис, а не рішення про вже сказане), тому й по інший
+             бік рядка. Надіслати — головна дія, тому праймер і крайній
+             праворуч, де рука очікує головну кнопку; «Сказати заново» —
+             другорядна, ліворуч від неї. -->
+        <div class="action-row">
+          <div class="voice-controls">
+            <button id="btn-talk" class="talk" aria-pressed="false">
+              <span class="talk-ring"></span>
+              <span id="talk-icon" class="talk-icon" aria-hidden="true">▶</span>
+              <span id="talk-label">Говорити</span>
+            </button>
+          </div>
+
+          <div class="answer-actions">
+            <button id="btn-voice-again" class="ghost" disabled
+                    title="Стерти сказане й почати відповідь заново">
+              ↺ Сказати заново
+            </button>
+            <button id="btn-send-answer" class="primary" disabled>Надіслати відповідь</button>
+          </div>
         </div>
 
         <canvas id="wave" class="wave" aria-hidden="true"></canvas>
-
-        <div class="voice-controls">
-          <button id="btn-talk" class="talk" aria-pressed="false">
-            <span class="talk-ring"></span>
-            <span id="talk-icon" class="talk-icon" aria-hidden="true">▶</span>
-            <span id="talk-label">Говорити</span>
-          </button>
-        </div>
 
         <p id="voice-status" class="status" aria-live="polite"></p>
       </div>

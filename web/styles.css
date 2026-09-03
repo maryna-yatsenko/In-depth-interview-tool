@@ -204,7 +204,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .status { color: var(--muted); font-size: 14px; margin: 14px 0 0; }
 /* Голосовий статус не тримає місце порожнім: у зоні дій кожен піксель
    забирається в питання й чекліста вгорі. */
-#voice-status { min-height: 0; margin: 8px 0 0; }
+#voice-status { min-height: 0; margin: 5px 0 0; }
 #voice-status:empty { display: none; }
 .status.error { color: var(--danger); }
 .hint { color: var(--muted); font-size: 14px; margin-top: 22px; }
@@ -292,8 +292,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .voice-area,
 #answer-area {
   flex: 0 0 auto;
-  padding-top: 8px;
-  padding-bottom: 2px;
+  padding-top: 6px;
+  padding-bottom: 0;
   background: var(--bg);
 }
 .voice-area { text-align: center; }
@@ -301,8 +301,8 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .wave {
   display: block;
   width: 100%;
-  height: 34px;
-  margin: 0 0 18px;
+  height: 24px;
+  margin: 0 0 8px;
   opacity: .25;
   transition: opacity .3s ease;
 }
@@ -325,18 +325,24 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 }
 .heard .interim { color: var(--muted); }
 
-.voice-controls { display: flex; justify-content: center; }
+.voice-controls { display: flex; justify-content: center; flex: none; }
+
+/* Говорити — ліворуч, пара дій над відповіддю — праворуч: один рядок замість
+   двох, і кожна дія лишається там, де рука на неї очікує. */
+.action-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin: 4px 0 4px;
+}
 
 /* Суцільний акцентний колір навіть у спокої: це головна дія на екрані, і
    вигляд каже про це ще до натискання, а не лише коли вже слухає. */
 .talk {
   position: relative;
-  width: 92px; height: 92px;
-  border-radius: 50%;
+  border-radius: var(--radius);
   background: var(--accent);
   border: 1px solid var(--accent);
   color: var(--on-accent);
-  font-size: 15px;
+  font-weight: 500;
   display: inline-flex; align-items: center; justify-content: center;
   transition: transform .15s ease, background .2s ease, border-color .2s ease, color .2s ease;
 }
@@ -346,7 +352,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 /* Пульс тільки під час запису: рухома окраса в спокої відволікає. */
 .talk-ring {
   position: absolute; inset: -1px;
-  border-radius: 50%;
+  border-radius: var(--radius);
   border: 2px solid transparent;
   pointer-events: none;
 }
@@ -371,7 +377,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* Надіслати / Сказати заново: голос не редагується текстом, тому це єдина
    пара дій над відповіддю. Праймер — головна дія, тому першим і виразнішим. */
-.answer-actions { display: flex; gap: 10px; justify-content: flex-end; margin: 4px 0 16px; flex-wrap: wrap; }
+.answer-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 
 .small-link {
   background: transparent; border: none; color: var(--muted);
@@ -395,7 +401,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .voice-option .try { color: var(--muted); font-size: 13px; margin-left: 6px; }
 
 @media (max-width: 520px) {
-  .talk { width: 116px; height: 116px; }
+  .talk { padding: 16px 22px; font-size: 15px; }
   .heard { font-size: 17px; }
 }
 
@@ -461,8 +467,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .edit-inline:hover { color: var(--text); border-color: var(--muted); }
 
 /* Іконка в головній кнопці: стан видно, не читаючи підпис. */
-.talk-icon { display: block; font-size: 22px; line-height: 1; margin-bottom: 4px; }
-.talk { flex-direction: column; }
+.talk-icon { display: inline-block; font-size: 15px; line-height: 1; margin-right: 8px; }
 
 
 /* ── Чекліст очікуваного ──────────────────────────────────────────────── */
@@ -474,6 +479,14 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   padding: 0 2px;
   font-size: 13px;
   text-align: left;
+}
+/* Усередині картки з записаним текстом (не окремим блоком, як раніше) —
+   тонка риска знизу відділяє «про що сказати» від того, що вже сказано,
+   і власний відступ картки (answer-block) замінює бічний padding. */
+.answer-block .checklist {
+  margin: 0 0 12px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
 }
 .checklist-title {
   display: flex; align-items: baseline; gap: 7px;
@@ -546,13 +559,13 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .checklist li { padding: 1px 0; }
   .checklist-title { margin-bottom: 4px; }
   .interview-scroll { padding-bottom: 0; }
-  .talk { width: 84px; height: 84px; font-size: 14px; }
-  .talk-icon { font-size: 19px; margin-bottom: 3px; }
-  .wave { height: 26px; margin: 4px 0 2px; }
+  .talk { padding: 10px 16px; font-size: 12px; }
+  .talk-icon { font-size: 13px; margin-right: 6px; }
+  .wave { height: 18px; margin: 2px 0 2px; }
   .heard { margin-bottom: 10px; }
-  .answer-actions { margin: 4px 0 8px; }
+  .action-row { margin: 2px 0 2px; }
   .word-progress { margin-top: 6px; }
-  .voice-area, #answer-area { padding-top: 6px; }
+  .voice-area, #answer-area { padding-top: 4px; }
 }
 
 /* «Перевіряю» — поки модель слухає те, що людина щойно сказала. Без цього
