@@ -152,6 +152,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ghost { background: transparent; color: var(--muted); border-color: var(--line); font-size: 15px; }
 .ghost:hover { color: var(--text); }
 
+/* «Надіслати» — другорядна за вагою (не суцільна заливка), але щойно
+   зʼявилось хоч слово, має бути видно, що кнопка вже готова: сіре на сірому
+   (звичайний .ghost) різниці «вимкнено/увімкнено» майже не показує. */
+#btn-send-answer:not(:disabled) {
+  color: var(--accent); border-color: var(--accent);
+}
+#btn-send-answer:not(:disabled):hover { background: var(--bg); }
+
 .mic {
   background: var(--surface);
   border-color: var(--line);
@@ -331,7 +339,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
    двох, і кожна дія лишається там, де рука на неї очікує. */
 .action-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; flex-wrap: wrap; margin: 4px 0 4px;
+  gap: 10px; flex-wrap: wrap; margin: 20px 0 4px;
 }
 
 /* Суцільний акцентний колір навіть у спокої: це головна дія на екрані, і
@@ -349,21 +357,6 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .talk:hover:not(:disabled) { transform: scale(1.02); }
 .talk[aria-pressed="true"] { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
 
-/* Пульс тільки під час запису: рухома окраса в спокої відволікає. */
-.talk-ring {
-  position: absolute; inset: -1px;
-  border-radius: var(--radius);
-  border: 2px solid transparent;
-  pointer-events: none;
-}
-.talk[aria-pressed="true"] .talk-ring {
-  border-color: var(--danger);
-  animation: ring 1.6s ease-out infinite;
-}
-@keyframes ring {
-  0%   { transform: scale(1);    opacity: .7; }
-  100% { transform: scale(1.28); opacity: 0; }
-}
 
 /* «Попереднє» й «Наступне» — по краях, не парою в центрі: це протилежні дії
    (назад/вперед), і рознесення саме про це каже, ще до читання підписів. */
@@ -467,7 +460,15 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .edit-inline:hover { color: var(--text); border-color: var(--muted); }
 
 /* Іконка в головній кнопці: стан видно, не читаючи підпис. */
-.talk-icon { display: inline-block; font-size: 15px; line-height: 1; margin-right: 8px; }
+.talk-icon { display: inline-flex; line-height: 1; margin-right: 8px; }
+
+/* Векторні іконки замість емодзі: розмір відносно шрифту (em), тому
+   масштабуються разом із текстом кнопки/підпису, а не самі по собі.
+   currentColor — колір бере з тексту навколо, без окремого налаштування. */
+.icon {
+  width: 1em; height: 1em; flex: none;
+  vertical-align: -0.15em;
+}
 
 
 /* ── Чекліст очікуваного ──────────────────────────────────────────────── */
@@ -533,7 +534,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .word-progress.met .word-detail { color: var(--good); }
 
 /* Доріжка стоїть при кнопці запису, бо стосується саме запису. */
-.wave { margin: 6px 0 2px; }
+.wave { margin: 14px 0 2px; }
 
 /* Webkit окремо: scrollbar-width він досі не знає. */
 .interview-scroll::-webkit-scrollbar { width: 6px; }
@@ -563,7 +564,7 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   .talk-icon { font-size: 13px; margin-right: 6px; }
   .wave { height: 18px; margin: 2px 0 2px; }
   .heard { margin-bottom: 10px; }
-  .action-row { margin: 2px 0 2px; }
+  .action-row { margin: 12px 0 2px; }
   .word-progress { margin-top: 6px; }
   .voice-area, #answer-area { padding-top: 4px; }
 }

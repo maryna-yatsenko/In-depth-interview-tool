@@ -12,6 +12,19 @@
   var state = { spaces: [], space: null, guide: null, guideData: null, spaceData: null,
                 trash: [], trashOpen: false };
 
+  /* Векторні іконки замість емодзі — розмітка статична (нема користувацького
+     тексту всередині SVG), тому innerHTML для НИХ безпечний; де поруч стоїть
+     текст із конфігу/транскрипту (space.error, incident.detail тощо), той
+     текст завжди йде окремим text-вузлом (createTextNode), а не в цей рядок. */
+  var ICONS = {
+    ban: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    speaker: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>',
+    lock: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+    alertTriangle: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l10 18H2L12 3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg>',
+    shield: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>',
+    dot: '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="4"/></svg>'
+  };
+
   /* ── допоміжне ─────────────────────────────────────────────────────── */
 
   function api(path, options) {
@@ -92,9 +105,12 @@
       }
       var sub = document.createElement("span");
       sub.className = "sub" + (space.error ? " broken" : "");
-      sub.textContent = space.error
-        ? ("⛔ " + space.error)
-        : (space.key + " · " + space.guides.length + " гайд(ів)");
+      if (space.error) {
+        sub.innerHTML = ICONS.ban;
+        sub.appendChild(document.createTextNode(" " + space.error));
+      } else {
+        sub.textContent = space.key + " · " + space.guides.length + " гайд(ів)";
+      }
       button.appendChild(sub);
       button.addEventListener("click", function () { selectSpace(space.key); });
       li.appendChild(button);
@@ -453,7 +469,7 @@
         if (item.voice && item.voice.length) {
           var voice = document.createElement("button");
           voice.className = "ghost small";
-          voice.textContent = "🎧 " + item.voice.length;
+          voice.innerHTML = ICONS.speaker + " " + item.voice.length;
           voice.title = "Прослухати записи голосу респондента";
           voice.addEventListener("click", function () {
             showVoice(item.session_id, item.voice, row);
@@ -503,21 +519,34 @@
 
   /* Кожен вид інциденту має власні поля. Раніше рендерер чекав `problems` у
      всіх, і маскування виводилось порожнім рядком. */
+  /* Іконка окремо від тексту (не в один рядок): текст може містити те, що
+     сказала модель чи респондент, і його не можна пускати через innerHTML. */
   function describeIncident(incident) {
-    if (incident.kind === "override") return "🔒 ядро: " + incident.detail;
+    if (incident.kind === "override") {
+      return { icon: "lock", text: "ядро: " + incident.detail };
+    }
     if (incident.kind === "guard_rejection") {
-      return "⛔ guard відхилив репліку (спроба " + (incident.attempt || 1) + "): " +
-        (incident.problems || []).join("; ");
+      return {
+        icon: "ban",
+        text: "guard відхилив репліку (спроба " + (incident.attempt || 1) + "): " +
+          (incident.problems || []).join("; ")
+      };
     }
     if (incident.kind === "guard_fallback") {
-      return "⚠️ модель не змогла сформулювати репліку без порушень — пішло нейтральне питання";
+      return {
+        icon: "alertTriangle",
+        text: "модель не змогла сформулювати репліку без порушень — пішло нейтральне питання"
+      };
     }
     if (incident.kind === "deidentified") {
-      return "🛡 замасковано у відповіді: " + (incident.rules || []).map(function (r) {
-        return r.rule + (r.count > 1 ? (" ×" + r.count) : "");
-      }).join(", ");
+      return {
+        icon: "shield",
+        text: "замасковано у відповіді: " + (incident.rules || []).map(function (r) {
+          return r.rule + (r.count > 1 ? (" ×" + r.count) : "");
+        }).join(", ")
+      };
     }
-    return "• " + incident.kind;
+    return { icon: "dot", text: incident.kind };
   }
 
   function showTranscript(id) {
@@ -528,7 +557,9 @@
       (data.incidents || []).forEach(function (incident) {
         var node = document.createElement("div");
         node.className = "incident";
-        node.textContent = describeIncident(incident);
+        var described = describeIncident(incident);
+        node.innerHTML = ICONS[described.icon];
+        node.appendChild(document.createTextNode(" " + described.text));
         host.appendChild(node);
       });
 

@@ -16,6 +16,20 @@
 
   var el = function (id) { return document.getElementById(id); };
 
+  /* Векторні іконки замість емодзі: однаковий вигляд у всіх системах і
+     шрифтах (емодзі-рендер відрізняється між ОС), колір бере з тексту
+     навколо (currentColor), а не свій власний. Розмір/відступ — у .icon
+     (styles.css), тут лише розмітка. Рядки статичні (нема підстановок
+     користувацького тексту), тому їх безпечно ставити через innerHTML. */
+  var ICONS = {
+    play: '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8V4z"/></svg>',
+    stop: '<svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>',
+    speaker: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19.5 5.5a9 9 0 0 1 0 13"/></svg>',
+    mic: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>',
+    redo: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 8 8 8"/></svg>',
+    keyboard: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>'
+  };
+
   var state = {
     sessionId: null,
     space: null,
@@ -357,8 +371,7 @@
         : (state.finalText.trim() ? "Продовжити" : "Говорити");
       // Найпростіші знаки: почати/зупинити, як у будь-якого плеєра —
       // впізнаються швидше, ніж мікрофон-емодзі, і однакові в усіх шрифтах.
-      el("talk-icon").textContent = listening ? "⏹" : "▶";
-      el("talk-ring") && 0;
+      el("talk-icon").innerHTML = listening ? ICONS.stop : ICONS.play;
     } else {
       var mic = el("btn-mic");
       mic.setAttribute("aria-pressed", listening ? "true" : "false");
@@ -603,17 +616,17 @@
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = "ghost small history-play";
-    btn.textContent = "🔊 Прослухати";
+    btn.innerHTML = ICONS.speaker + " Прослухати";
     var player = null;
     function stop() {
       if (player) { try { player.pause(); } catch (e) { /* уже стоїть */ } player = null; }
-      btn.textContent = "🔊 Прослухати";
+      btn.innerHTML = ICONS.speaker + " Прослухати";
     }
     btn.addEventListener("click", function () {
       if (player) { stop(); return; }
       var index = 0;
       player = new Audio();
-      btn.textContent = "⏹ Зупинити";
+      btn.innerHTML = ICONS.stop + " Зупинити";
       function next() {
         if (index >= names.length) { stop(); return; }
         player.src = "/voice/" + state.sessionId + "/" + names[index++];
@@ -704,7 +717,7 @@
       var dictate = document.createElement("button");
       dictate.type = "button";
       dictate.className = "ghost small";
-      dictate.textContent = "🎙 Диктувати";
+      dictate.innerHTML = ICONS.mic + " Диктувати";
       var recognizer = null;
       var base = "";
       // Записи цього доповнення. Явно свій масив, а не спільний
@@ -720,7 +733,7 @@
       function stopDictate() {
         if (recognizer) { try { recognizer.stop(); } catch (e) { /* уже стоїть */ } }
         recognizer = null;
-        dictate.textContent = "🎙 Диктувати";
+        dictate.innerHTML = ICONS.mic + " Диктувати";
         dictate.classList.remove("active");
         if (!micStream) return;
         var stream = micStream;
@@ -764,7 +777,7 @@
         recognizer.onend = function () { if (recognizer) stopDictate(); };
         try {
           recognizer.start();
-          dictate.textContent = "⏹ Зупинити";
+          dictate.innerHTML = ICONS.stop + " Зупинити";
           dictate.classList.add("active");
         } catch (e) { stopDictate(); return; }
 
@@ -861,7 +874,7 @@
       // тут, а не лише при старті/зупинці запису.
       if (state.phase !== "listening") {
         el("talk-label").textContent = has ? "Продовжити" : "Говорити";
-        el("talk-icon").textContent = "▶";
+        el("talk-icon").innerHTML = ICONS.play;
       }
       // Надіслати — щойно є що надсилати. Сказане голосом не редагується
       // текстом, тому єдина альтернатива — стерти й почати заново.
@@ -1356,16 +1369,16 @@
   function describeCapabilities() {
     var parts = [];
     if (recognitionCtor()) {
-      parts.push("🎙 Мікрофон доступний.");
+      parts.push(ICONS.mic + " Мікрофон доступний.");
     } else {
-      parts.push("⌨️ Цей браузер не розпізнає мовлення — інтервʼю пройде текстом (Chrome вміє).");
+      parts.push(ICONS.keyboard + " Цей браузер не розпізнає мовлення — інтервʼю пройде текстом (Chrome вміє).");
     }
     if (state.space.repertoire === "bank") {
-      parts.push("🔊 Питання можна прослухати записаним людським голосом.");
+      parts.push(ICONS.speaker + " Питання можна прослухати записаним людським голосом.");
     } else if (state.ttsMode !== "none") {
-      parts.push("🔊 Питання можна прослухати.");
+      parts.push(ICONS.speaker + " Питання можна прослухати.");
     }
-    el("capabilities").textContent = parts.join(" ");
+    el("capabilities").innerHTML = parts.join(" ");
   }
 
   function loadSpace() {

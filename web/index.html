@@ -66,7 +66,7 @@
              а не про поточну відповідь. -->
         <div id="voice-confirm" class="voice-confirm">
           <button id="btn-prev" class="ghost" disabled>← Попереднє</button>
-          <button id="btn-next" class="primary" disabled>Наступне питання →</button>
+          <button id="btn-next" class="ghost" disabled>Наступне питання →</button>
         </div>
         <div class="progress-row">
           <p id="progress-detail" class="progress-detail"></p>
@@ -88,8 +88,8 @@
         <div id="audio-bar" class="reading-bar hidden">
           <span id="audio-dot" class="reading-dot hidden"></span>
           <span id="audio-text" class="reading-text">Питання можна прослухати</span>
-          <button id="btn-listen" class="ghost small">🔊 Прослухати</button>
-          <button id="btn-stop-speak" class="ghost small hidden">⏹ Зупинити</button>
+          <button id="btn-listen" class="ghost small"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19.5 5.5a9 9 0 0 1 0 13"/></svg> Прослухати</button>
+          <button id="btn-stop-speak" class="ghost small hidden"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg> Зупинити</button>
         </div>
       </blockquote>
 
@@ -125,7 +125,7 @@
           <div class="answer-tools">
             <button id="btn-play-own" class="edit-inline hidden"
                     title="Прослухати свій запис">
-              🔊 <span id="play-own-label">Прослухати</span>
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19.5 5.5a9 9 0 0 1 0 13"/></svg> <span id="play-own-label">Прослухати</span>
             </button>
           </div>
 
@@ -145,8 +145,7 @@
         <div class="action-row">
           <div class="voice-controls">
             <button id="btn-talk" class="talk" aria-pressed="false">
-              <span class="talk-ring"></span>
-              <span id="talk-icon" class="talk-icon" aria-hidden="true">▶</span>
+              <span id="talk-icon" class="talk-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8V4z"/></svg></span>
               <span id="talk-label">Говорити</span>
             </button>
           </div>
@@ -154,9 +153,9 @@
           <div class="answer-actions">
             <button id="btn-voice-again" class="ghost" disabled
                     title="Стерти сказане й почати відповідь заново">
-              ↺ Сказати заново
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 8 8 8"/></svg> Сказати заново
             </button>
-            <button id="btn-send-answer" class="primary" disabled>Надіслати відповідь</button>
+            <button id="btn-send-answer" class="ghost" disabled>Надіслати відповідь</button>
           </div>
         </div>
 
