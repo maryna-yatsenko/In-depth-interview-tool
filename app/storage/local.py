@@ -25,6 +25,11 @@ from . import voice as _voice
 
 DEFAULT_DIR = os.path.join(os.getcwd(), "local", "data", "sessions")
 LIVE_DIR = os.path.join(os.getcwd(), "local", "data", "live")
+# Відгук респондента про сам досвід проходження інтервʼю — окремо від
+# sessions/: той пишеться один раз і назавжди (FileExistsError на повторний
+# запис), а відгук приходить ПІСЛЯ /api/finish, коли транскрипт уже
+# закритий. Окремий, перезаписний файл — без порушення заборони вище.
+FEEDBACK_DIR = os.path.join(os.getcwd(), "local", "data", "feedback")
 
 
 def _on_postgres() -> bool:
@@ -155,6 +160,7 @@ def _summarize(data: Dict[str, Any]) -> Dict[str, Any]:
     """Короткі відомості про одне завершене інтервʼю — без вмісту реплік."""
     return {
         "session_id": data.get("session_id"),
+        "respondent_name": data.get("respondent_name"),
         "space": data.get("space"),
         "guide": data.get("guide"),
         "prompt_version": data.get("prompt_version"),
@@ -169,6 +175,9 @@ def _summarize(data: Dict[str, Any]) -> Dict[str, Any]:
         "voice_consent": bool(data.get("voice_consent")),
         "voice": [name for turn in (data.get("turns") or [])
                   for name in (turn.get("voice") or [])],
+        # Відгук про сам досвід — окремий файл (save_feedback), тому в
+        # переліку його треба підтягнути окремим читанням, а не брати з data.
+        "feedback": load_feedback(data["session_id"]) if data.get("session_id") else None,
     }
 
 
@@ -231,6 +240,27 @@ def drop_live(session_id: str, directory: Optional[str] = None) -> None:
         os.remove(path)
 
 
+# ── відгук про досвід проходження (окремо від транскрипту) ───────────────
+
+def save_feedback(session_id: str, payload: Dict[str, Any]) -> None:
+    if _on_postgres():
+        _db.save_feedback(session_id, payload)
+        return
+    os.makedirs(FEEDBACK_DIR, exist_ok=True)
+    path = os.path.join(FEEDBACK_DIR, "%s.json" % _safe_id(session_id))
+    _write_atomic(path, payload)
+
+
+def load_feedback(session_id: str) -> Optional[Dict[str, Any]]:
+    if _on_postgres():
+        return _db.load_feedback(session_id)
+    path = os.path.join(FEEDBACK_DIR, "%s.json" % _safe_id(session_id))
+    if not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 # ── видалення (адмінка: дослідник видаляє інтервʼю разом із даними) ───────
 
 def delete_sessions_for_space(space_key: str) -> int:
@@ -279,5 +309,8 @@ def delete_sessions_for_space(space_key: str) -> int:
         directory = _voice.session_dir(session_id)
         if os.path.isdir(directory):
             shutil.rmtree(directory, ignore_errors=True)
+        feedback_path = os.path.join(FEEDBACK_DIR, "%s.json" % _safe_id(session_id))
+        if os.path.isfile(feedback_path):
+            os.remove(feedback_path)
 
     return removed

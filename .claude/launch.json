@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "serve",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["local/serve.py", "--space", "spaces/example", "--llm", "mock", "--admin"],
+      "port": 8770
+    }
+  ]
+}

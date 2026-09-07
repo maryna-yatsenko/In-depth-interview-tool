@@ -1,178 +1,15 @@
-/* Звук: озвучення питань і візуалізація голосу респондента.
+/* Звук: візуалізація й запис голосу респондента.
  *
- * Виділено з app.js окремо, бо це єдине місце, де інструмент працює з Web Audio
- * і speechSynthesis. Ядро інтервʼю про звук не знає взагалі.
+ * Виділено з app.js окремо, бо це єдине місце, де інструмент працює з Web
+ * Audio. Ядро інтервʼю про звук не знає взагалі.
+ *
+ * Озвучення питань синтезом (speechSynthesis/TTS) тут свідомо більше немає:
+ * питання начитує сам дослідник (адмінка → Налаштування → питання →
+ * мікрофон), респондент чує живий голос, а не синтез.
  */
 
 window.ITAudio = (function () {
   "use strict";
-
-  /* ── Озвучення ─────────────────────────────────────────────────────────
-   *
-   * Головний прийом проти «робота»: не віддавати браузеру весь абзац одним
-   * куском. Рушій вимовляє довгий текст рівною монотонною лінією і сам не
-   * ставить паузи там, де їх ставить людина. Якщо порізати на речення й
-   * промовляти їх окремими висловлюваннями з короткими паузами, інтонація
-   * скидається на кожній фразі, а паузи падають туди, де кома й точка.
-   * Це чути одразу — сильніше, ніж будь-яке крутіння rate і pitch.
-   */
-
-  var MAX_CHUNK = 140;   // довші куски рушій вимовляє монотонно
-  var MIN_CHUNK = 12;    // коротші зшиваємо, щоб не було рубленої мови;
-
-  function splitForSpeech(text) {
-    var clean = String(text || "").replace(/\s+/g, " ").trim();
-    if (!clean) return [];
-
-    // Спершу за кінцем речення, зберігаючи знак.
-    var sentences = clean.match(/[^.!?…]+[.!?…]*/g) || [clean];
-    var chunks = [];
-
-    sentences.forEach(function (sentence) {
-      var part = sentence.trim();
-      if (!part) return;
-      if (part.length <= MAX_CHUNK) { chunks.push(part); return; }
-      // Довге речення ріжемо за комами й тире — там людина теж дихає.
-      // Без lookbehind навмисно: у Safari він з'явився лише в 16.4, а падати
-      // на розділенні тексту через версію браузера респондента — дурна причина.
-      var pieces = [];
-      var buf = "";
-      part.split(" ").forEach(function (word) {
-        buf = buf ? (buf + " " + word) : word;
-        if (/[,;—–]$/.test(word)) { pieces.push(buf); buf = ""; }
-      });
-      if (buf) pieces.push(buf);
-      var buffer = "";
-      pieces.forEach(function (piece) {
-        piece = piece.trim();
-        if (!piece) return;
-        if ((buffer + " " + piece).trim().length > MAX_CHUNK && buffer) {
-          chunks.push(buffer.trim());
-          buffer = piece;
-        } else {
-          buffer = (buffer + " " + piece).trim();
-        }
-      });
-      if (buffer) chunks.push(buffer.trim());
-    });
-
-    // Зшиваємо занадто короткі куски з наступним.
-    var merged = [];
-    chunks.forEach(function (chunk) {
-      if (merged.length && merged[merged.length - 1].length < MIN_CHUNK) {
-        merged[merged.length - 1] = merged[merged.length - 1] + " " + chunk;
-      } else {
-        merged.push(chunk);
-      }
-    });
-    return merged;
-  }
-
-  function listVoices(lang) {
-    if (!window.speechSynthesis) return [];
-    var voices = window.speechSynthesis.getVoices() || [];
-    if (!lang) return voices;
-    var short = String(lang).split("-")[0].toLowerCase();
-    return voices.filter(function (voice) {
-      return voice.lang && voice.lang.toLowerCase().indexOf(short) === 0;
-    });
-  }
-
-  function pickVoice(lang, preferredName) {
-    var candidates = listVoices(lang);
-    if (!candidates.length) return null;
-    if (preferredName) {
-      for (var i = 0; i < candidates.length; i++) {
-        if (candidates[i].name === preferredName) return candidates[i];
-      }
-    }
-    // За інших рівних беремо «покращений» голос, якщо система його має:
-    // на macOS такі варіанти звучать помітно природніше за базові.
-    for (var j = 0; j < candidates.length; j++) {
-      if (/enhanced|premium|siri/i.test(candidates[j].name)) return candidates[j];
-    }
-    return candidates[0];
-  }
-
-  function createSpeaker(options) {
-    var config = options || {};
-    var state = { chain: [], cancelled: false, speaking: false };
-
-    function stop() {
-      state.cancelled = true;
-      state.chain = [];
-      state.speaking = false;
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-    }
-
-    function speak(text, callbacks) {
-      var handlers = callbacks || {};
-      if (!window.speechSynthesis) { if (handlers.onEnd) handlers.onEnd(); return; }
-      stop();
-      state.cancelled = false;
-
-      var chunks = splitForSpeech(text);
-      if (!chunks.length) { if (handlers.onEnd) handlers.onEnd(); return; }
-
-      var voice = pickVoice(config.lang, config.voiceName);
-      var index = 0;
-      state.speaking = true;
-
-      function next() {
-        if (state.cancelled) return;
-        if (index >= chunks.length) {
-          state.speaking = false;
-          if (handlers.onEnd) handlers.onEnd();
-          return;
-        }
-        var phrase = chunks[index];
-        var utter = new SpeechSynthesisUtterance(phrase);
-        utter.lang = config.lang || "uk-UA";
-        if (voice) utter.voice = voice;
-        utter.rate = config.rate || 0.97;
-        utter.pitch = config.pitch || 1.0;
-        utter.volume = config.volume || 1.0;
-        index += 1;
-
-        // Сторож на кожну фразу. speechSynthesis на macOS іноді не викликає
-        // ні onend, ні onerror — і тоді ланцюжок зупиняється назавжди, а
-        // респондент лишається з заблокованою кнопкою і без можливості
-        // відповісти. Це фатально, тому не покладаємось на подію.
-        var advanced = false;
-        var watchdog = null;
-
-        function advance(delay) {
-          if (advanced || state.cancelled) return;
-          advanced = true;
-          if (watchdog) window.clearTimeout(watchdog);
-          window.setTimeout(next, delay);
-        }
-
-        // Оцінка тривалості: ~13 символів на секунду при rate 1, з запасом ×2.
-        var estimate = (phrase.length / 13) * 1000 / (utter.rate || 1) + 1500;
-        watchdog = window.setTimeout(function () { advance(0); }, estimate * 2);
-
-        utter.onend = function () {
-          // Пауза між фразами: без неї речення злипаються в один потік.
-          advance(config.gap == null ? 140 : config.gap);
-        };
-        utter.onerror = function () { advance(60); };
-
-        window.speechSynthesis.speak(utter);
-      }
-
-      if (handlers.onStart) handlers.onStart();
-      next();
-    }
-
-    return {
-      speak: speak,
-      stop: stop,
-      isSpeaking: function () { return state.speaking; },
-      setVoiceName: function (name) { config.voiceName = name; },
-      config: config
-    };
-  }
 
   /* ── Доріжка голосу ────────────────────────────────────────────────────
    *
@@ -350,11 +187,7 @@ window.ITAudio = (function () {
   }
 
   return {
-    splitForSpeech: splitForSpeech,
     createRecorder: createRecorder,
-    listVoices: listVoices,
-    pickVoice: pickVoice,
-    createSpeaker: createSpeaker,
     createWaveform: createWaveform
   };
 })();

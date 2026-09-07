@@ -29,15 +29,10 @@ CLOSING = "closing"
 
 # Що робити наступним ходом
 FIXED = "fixed"        # дослівний текст із гайда
-PROBE = "probe"        # вільне уточнення — тут потрібна модель
 HOLD = "hold"          # інтервʼюер МОВЧИТЬ, людина продовжує розповідь
 WRAP_UP = "wrap_up"
 
 SHORT_ANSWER_WORDS = 6
-# Скільки вільних уточнень модель може дати в одній темі. Гайд їх не просить
-# зовсім: у нього є рівень 1, рівень 2 «до конкретики» і драбина заглиблення.
-# Один — це запас на випадок, коли відповідь пішла в бік, якого гайд не передбачив.
-MAX_MODEL_PROBES_PER_TOPIC = 1
 # Скільки разів доперепитуємо в розігріві, якщо людина не назвала того, що
 # просив гайд («куди їздили · з ким · скільки вас було»). Два — щоб у гіршому
 # випадку закрити всі три пункти й не перетворити дворозмовний розігрів на
@@ -54,10 +49,6 @@ class Action:
     topic_id: str = ""
     label: str = ""            # для транскрипту: звідки взялась репліка
     advance_topic: bool = False
-    # Про що саме питати вільним уточненням: незакритий пункт `must_learn`
-    # поточної теми. Без цього модель питає «щось по темі», а нам треба
-    # закрити конкретну прогалину, яку записав дослідник.
-    focus: str = ""
 
 
 @dataclass
@@ -71,7 +62,6 @@ class PhaseState:
     # її вже згадували в розповіді, і як хід «до конкретики», якщо відповідь на
     # рівень 1 виявилась тонкою. Другого гайд і хоче.
     topic_level2: Dict[str, bool] = field(default_factory=dict)
-    topic_probes: Dict[str, int] = field(default_factory=dict)
     # Які пункти `must_learn` уже закриті: {topic_id: [індекси]}. Це і є
     # відповідь на питання «чи дізналися все, що потрібно».
     topic_items_done: Dict[str, List[int]] = field(default_factory=dict)
@@ -101,7 +91,6 @@ class PhaseState:
             "topic_asked": dict(self.topic_asked),
             "topic_entered": dict(self.topic_entered),
             "topic_level2": dict(self.topic_level2),
-            "topic_probes": dict(self.topic_probes),
             "topic_items_done": {k: list(v) for k, v in self.topic_items_done.items()},
             "closing_index": self.closing_index,
             "deepening_index": self.deepening_index,
@@ -125,7 +114,6 @@ class PhaseState:
             topic_asked=dict(data.get("topic_asked") or {}),
             topic_entered=dict(data.get("topic_entered") or {}),
             topic_level2=dict(data.get("topic_level2") or {}),
-            topic_probes=dict(data.get("topic_probes") or {}),
             topic_items_done={k: list(v) for k, v in
                               (data.get("topic_items_done") or {}).items()},
             closing_index=int(data.get("closing_index", 0)),
@@ -202,14 +190,6 @@ def open_items(topic, state: PhaseState) -> List[int]:
     """Індекси пунктів `must_learn`, які ще не закриті."""
     done = set(state.topic_items_done.get(topic.id, []))
     return [i for i in range(len(topic.must_learn or [])) if i not in done]
-
-
-def focus_item(topic, state: PhaseState) -> str:
-    """Наступна прогалина, яку треба закрити в цій темі."""
-    remaining = open_items(topic, state)
-    if not remaining:
-        return ""
-    return topic.must_learn[remaining[0]]
 
 
 PHASE_LABELS = {
@@ -466,12 +446,11 @@ class Plan:
 
             state.deepening_index = 0
 
-            probes_used = state.topic_probes.get(topic.id, 0)
             level2_used = state.topic_level2.get(topic.id, False)
             gaps = open_items(topic, state)
 
-            # Тема закрита за змістом — переходимо, навіть якщо ліміт питань
-            # ще лишився. Витрачати ходи на закриту тему означало б забирати
+            # Тема закрита за змістом — переходимо, навіть якщо рівень 2 ще не
+            # прозвучав. Витрачати ходи на закриту тему означало б забирати
             # їх у наступної.
             if topic.must_learn and not gaps:
                 if state.topic_index + 1 < len(self.guide.topics):
@@ -488,19 +467,15 @@ class Plan:
                 return Action(kind=FIXED, text=topic.ask_for_detail,
                               topic_id=topic.id, label="topic-level2")
 
-            if asked >= topic.max_probes or probes_used >= MAX_MODEL_PROBES_PER_TOPIC:
-                if state.topic_index + 1 < len(self.guide.topics):
-                    state.topic_index += 1
-                    return self._enter_topic(state, narrative_text)
-                state.phase = CLOSING
-                return self.next_action(state, last_answer, narrative_text)
-
-            state.topic_asked[topic.id] = asked + 1
-            state.topic_probes[topic.id] = probes_used + 1
-            # Уточнення націлене на конкретну незакриту прогалину, а не «щось
-            # по темі»: саме це й означає «дізнатися все, що нам потрібно».
-            return Action(kind=PROBE, topic_id=topic.id, label="probe",
-                          focus=focus_item(topic, state))
+            # Обидва рівні (чи скільки їх дав гайд) уже прозвучали, а прогалини
+            # лишились — це той запас, якого гайд не передбачив. Вільного
+            # уточнення моделлю тут більше немає: переходимо далі, дослідник
+            # добере прогалину сам, за потреби доповнивши гайд.
+            if state.topic_index + 1 < len(self.guide.topics):
+                state.topic_index += 1
+                return self._enter_topic(state, narrative_text)
+            state.phase = CLOSING
+            return self.next_action(state, last_answer, narrative_text)
 
         # ── підсумок ──
         if state.phase == CLOSING:
@@ -564,5 +539,8 @@ class Plan:
         if topic.ask_if_missed:
             return Action(kind=FIXED, text=topic.ask_if_missed, topic_id=topic.id,
                           label="topic-level1")
-        # Гайд без готових формулювань — питання формулює модель.
-        return Action(kind=PROBE, topic_id=topic.id, label="probe")
+        # Валідатор простору (app/config/space.py) вимагає ask_if_missed на
+        # кожній темі поза банком — сюди не мало дійти без нього.
+        raise ValueError(
+            "Тема '%s' без ask_if_missed — вільного формулювання питань "
+            "модель більше не робить, дописати текст має дослідник у гайді." % topic.id)

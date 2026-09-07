@@ -66,87 +66,9 @@ class Judge(LLMProvider):
         return "А що саме там сталося?"
 
 
-def free_mode(guide):
-    """Гайд без питань по темах — вільний режим, де питання формулює модель.
-
-    Судження про прогалини живе тільки тут: у сценарному режимі порядок задає
-    дослідник, а темп — людина, і модель не вирішує нічого.
-    """
-    for topic in guide.topics:
-        topic.ask_if_missed = ""
-        topic.ask_for_detail = ""
-    return guide
-
-
 class TestDraftMarksItems(unittest.TestCase):
     def setUp(self):
         self.space, self.guide = load_space_dir(TRAVEL)
-        free_mode(self.guide)
-
-    def _to_topics(self, llm):
-        """Доводить сесію до фази уточнень.
-
-        Циклом, а не трьома відповідями: розігрів тепер доперепитує те, чого
-        не почув, і кількість ходів залежить від оцінювача.
-        """
-        session = Session(self.space, self.guide, llm)
-        session.start()
-        for _ in range(12):
-            if session.phase_state.phase == phases.TOPICS:
-                break
-            session.answer("Та все, більше нічого.")
-        return session
-
-    def test_draft_marks_item_before_sending(self):
-        topic = self.guide.topics[0]
-        llm = Judge({topic.must_learn[0]: "Оля"})
-        session = self._to_topics(llm)
-
-        turns_before = len(session.turns)
-        result = session.evaluate_draft("Оля запропонувала цю поїздку в грудні.")
-
-        self.assertTrue(result["checklist"][0]["done"])
-        # Транскрипт не зачеплений: це чернетка, а не відповідь.
-        self.assertEqual(len(session.turns), turns_before)
-        # Стан рушія теж: пункт закриє лише надсилання.
-        self.assertNotIn(0, session.phase_state.topic_items_done.get(topic.id, []))
-
-    def test_reset_draft_clears_marks(self):
-        topic = self.guide.topics[0]
-        session = self._to_topics(Judge({topic.must_learn[0]: "Оля"}))
-        session.evaluate_draft("Оля запропонувала цю поїздку.")
-        self.assertTrue(session.checklist()[0]["done"])
-
-        session.reset_draft()
-        self.assertFalse(session.checklist()[0]["done"])
-
-    def test_shrinking_text_drops_marks(self):
-        """Людина стерла те, що сказала — галочка не має лишатись."""
-        topic = self.guide.topics[0]
-        session = self._to_topics(Judge({topic.must_learn[0]: "Оля"}))
-        session.evaluate_draft("Оля запропонувала цю поїздку ще в грудні, задовго до.")
-        self.assertTrue(session.checklist()[0]["done"])
-
-        session.evaluate_draft("Ну")
-        self.assertFalse(session.checklist()[0]["done"])
-
-    def test_editing_the_wording_keeps_the_marks(self):
-        """Правка формулювання — не нова відповідь.
-
-        Скарга Марини: «не відмічає те, що вже було сказано». Одна з причин —
-        скидання позначок за перевіркою на префікс: людина виправляла початок
-        фрази, і все зароблене зникало.
-        """
-        topic = self.guide.topics[0]
-        session = self._to_topics(Judge({topic.must_learn[0]: "Оля"}))
-        session.evaluate_draft("Оля запропонувала цю поїздку ще в грудні.")
-        self.assertTrue(session.checklist()[0]["done"])
-
-        # Те саме, але з іншим початком — і без нових викликів моделі.
-        session.llm.asked = []
-        session.evaluate_draft("Взагалі Оля запропонувала цю поїздку ще в грудні.")
-        self.assertTrue(session.checklist()[0]["done"],
-                        "правка початку зняла зароблену позначку")
 
     def test_same_answer_recognises_addition_and_replacement(self):
         keep = Session._same_answer
@@ -155,63 +77,6 @@ class TestDraftMarksItems(unittest.TestCase):
         self.assertTrue(keep(base, "Ми " + base.lower()))
         self.assertFalse(keep(base, "Ні, зовсім інша поїздка була в Одесу"))
         self.assertTrue(keep("", "перша фраза"))
-
-    def test_sending_answer_clears_draft_and_engine_takes_over(self):
-        topic = self.guide.topics[0]
-        session = self._to_topics(Judge({topic.must_learn[0]: "Оля"}))
-        session.evaluate_draft("Оля запропонувала цю поїздку.")
-        session.answer("Оля запропонувала цю поїздку.")
-
-        self.assertEqual(session.draft_done, [])
-        # Тепер це знання рушія, а не чернетки.
-        self.assertIn(0, session.phase_state.topic_items_done.get(topic.id, []))
-
-    def test_added_text_closes_item_that_was_missing_before(self):
-        """Дописане мусить закривати пункт, якого спершу не почули.
-
-        Спіймано в браузері: перша версія кешувала «цього не почули» й більше
-        пункт не перевіряла — тож людина доповнювала відповідь, а галочка не
-        зʼявлялась ніколи.
-        """
-        topic = self.guide.topics[0]
-        session = self._to_topics(Judge({topic.must_learn[0]: "Оля"}))
-
-        drain(session, "Поїхали в Карпати на чотири дні, було гарно.")
-        self.assertFalse(session.checklist()[0]["done"])
-
-        drain(session, "Поїхали в Карпати на чотири дні, було гарно. "
-                       "Запропонувала це Оля ще в грудні.")
-        self.assertTrue(session.checklist()[0]["done"])
-
-    def test_draft_is_judged_on_current_words_only(self):
-        """Галочка мусить бути наслідком того, що людина каже ЗАРАЗ.
-
-        Спіймано Мариною: людина говорить про інше, а галочка стає. Причина
-        була в тому, що жива перевірка судила весь текст інтервʼю разом із
-        чернеткою — і зараховувала пункт за старою відповіддю.
-        """
-        topic = self.guide.topics[0]
-        llm = Judge({topic.must_learn[0]: "Оля"})
-        session = Session(self.space, self.guide, llm)
-        session.start()
-        # «Оля» звучить у РОЗІГРІВІ, тобто в попередньому ході.
-        session.answer("Поїхали в Карпати, це Оля все організувала.")
-        session.answer("Та все.")
-        session.answer("Та все, більше нічого.")
-
-        # Пункт може бути вже закритий рушієм — і це правильно, «Оля» справді
-        # звучала. Перевіряємо саме ЧЕРНЕТКУ: слова про погоду не мають
-        # зараховувати нічого, і в промпт не має потрапляти старий текст.
-        llm.asked = []
-        session.evaluate_draft("Погода була жахлива, весь час дощ і туман.")
-
-        self.assertEqual(session.draft_done, [],
-                         "чернетка зарахувала пункт словами, яких у ній немає")
-        self.assertTrue(llm.asked, "оцінювача взагалі не питали")
-        for prompt in llm.asked:
-            self.assertIn("Погода була жахлива", prompt)
-            self.assertNotIn("Поїхали в Карпати", prompt,
-                             "у промпт потрапила попередня відповідь")
 
     def test_one_call_checks_at_most_the_cap(self):
         """Межа на прогін є: кожен пункт — окремий виклик моделі."""
@@ -237,12 +102,27 @@ class TestDraftMarksItems(unittest.TestCase):
         self.assertEqual(seen, set(self.guide.opening_expects))
 
 
+def _no_script(guide):
+    """Знімає ask_if_missed/ask_for_detail з усіх тем.
+
+    `checklist()` показує позначки «зараховано» лише для сесій без плаского
+    сценарію (`_legacy_checklist`) — сценарна («подорожі») лишає це людині.
+    Валідатор простору (app/config/space.py) більше не пускає такий гайд з
+    диска поза банком, тому тут — пряма мутація вже завантаженого обʼєкта,
+    лише для перевірки самого відображення позначок.
+    """
+    for topic in guide.topics:
+        topic.ask_if_missed = ""
+        topic.ask_for_detail = ""
+    return guide
+
+
 class TestWarmupAndClosingHaveMarks(unittest.TestCase):
     """Раніше галочки жили лише в темах — у розігріві чекліст стояв порожній."""
 
     def setUp(self):
         self.space, self.guide = load_space_dir(TRAVEL)
-        free_mode(self.guide)
+        _no_script(self.guide)
 
     def test_warmup_item_marked_live(self):
         expects = self.guide.opening_expects
@@ -281,7 +161,6 @@ class TestNarrativeEndsWhenEverythingHeard(unittest.TestCase):
 
     def setUp(self):
         self.space, self.guide = load_space_dir(TRAVEL)
-        free_mode(self.guide)
 
     def test_full_coverage_moves_to_topics(self):
         state = phases.PhaseState(phase=phases.NARRATIVE, narrative_count=5)

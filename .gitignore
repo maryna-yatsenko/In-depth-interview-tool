@@ -3,7 +3,6 @@ __pycache__/
 .DS_Store
 .env
 .venv/
-.venv-espnet/
 
 # Транскрипти — первинні дані дослідження. У git не їдуть ніколи.
 local/data/

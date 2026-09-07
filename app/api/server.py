@@ -7,6 +7,7 @@
 відповідь, віддає її в ядро і повертає наступну репліку.
 """
 
+import datetime
 import json
 import os
 import posixpath
@@ -17,10 +18,10 @@ from typing import Any, Dict, Optional
 
 from ..config.phrases import PhraseError, load_bank
 from ..config import space as space_module
-from ..config.space import ConfigError, Guide, SpaceConfig, load_space
+from ..config.space import Guide, SpaceConfig
 from ..interview.session import Session
 from ..providers.base import ProviderError
-from ..providers.registry import build_llm, build_tts
+from ..providers.registry import build_llm
 from ..storage import local as store_files
 from ..storage import voice as voice_files
 from . import admin as admin_api
@@ -28,10 +29,6 @@ from . import admin as admin_api
 WEB_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "web"
 )
-
-# Фраза для прослуховування голосу в панелі. Свідомо стала: див. _admin_preview.
-PREVIEW_TEXT = ("Розкажіть, будь ласка, про останній конкретний випадок, "
-                "коли це сталося. Що ви зробили далі?")
 
 # Формати, у яких браузери віддають запис із мікрофона.
 _AUDIO_MIME = {
@@ -49,32 +46,8 @@ _MIME = {
     ".css": "text/css; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".svg": "image/svg+xml",
+    ".png": "image/png",
 }
-
-
-class TtsHolder:
-    """Обгортка над провайдером озвучення, щоб його можна було замінити наживо.
-
-    Провайдер збирається зі збереженого конфігу простору. Коли дослідник
-    перемикає провайдера в панелі, сервер перезбирає його тут — інакше
-    доводилось би перезапускати сервер, а це рве live-сесії респондентів.
-    """
-
-    def __init__(self, provider=None):
-        self.current = provider
-        self._lock = threading.Lock()
-
-    def swap(self, provider):
-        with self._lock:
-            old = self.current
-            self.current = provider
-        # Довгоживучий процес попереднього провайдера треба зупинити, інакше
-        # він тримає модель у памʼяті до кінця життя сервера.
-        if old is not None and hasattr(old, "stop") and old is not provider:
-            try:
-                old.stop()
-            except Exception:
-                pass
 
 
 class SessionStore:
@@ -157,29 +130,23 @@ class SessionStore:
         return path
 
 
-def _preview_audio(tts, data: Dict[str, Any]) -> bytes:
-    """Синтез фрази для прослуховування, з тимчасовими налаштуваннями.
+class _SpaceEntry:
+    """Один запис реєстру: простір + гайд + власна SessionStore/банк.
 
-    Провайдер не пересобирається: підмінюємо поля на час одного виклику і
-    повертаємо як було. Інакше превʼю могло б тихо змінити налаштування живого
-    інтервʼю, яке зараз іде в іншій вкладці.
+    Респондентське посилання мусить уміти вказувати НА КОНКРЕТНИЙ простір
+    (?space=<key>), інакше кнопка «скопіювати посилання на форму» в
+    адмінці не мала б чого копіювати відмінного для кожного дослідження —
+    всі вели б у той самий, з яким сервер запущено. Store — окрема на
+    кожен простір: LLM-конфіг/провайдер і банк реплік можуть відрізнятись
+    між просторами, а сесії однієї не мають змішуватись із сесіями іншої.
     """
-    voice = data.get("voice") or None
-    tunable = ("length_scale", "sentence_silence", "noise_scale", "noise_w_scale", "add_stress")
-    saved = {}
-    try:
-        for field in tunable:
-            if field in data and hasattr(tts, field):
-                saved[field] = getattr(tts, field)
-                value = data[field]
-                if value in ("", None):
-                    setattr(tts, field, None if field != "add_stress" else False)
-                else:
-                    setattr(tts, field, bool(value) if field == "add_stress" else float(value))
-        return tts.synthesize(PREVIEW_TEXT, voice=voice)
-    finally:
-        for field, value in saved.items():
-            setattr(tts, field, value)
+    __slots__ = ("space", "guide", "store", "bank_provider")
+
+    def __init__(self, space: SpaceConfig, guide: Guide, store: SessionStore, bank_provider):
+        self.space = space
+        self.guide = guide
+        self.store = store
+        self.bank_provider = bank_provider
 
 
 def make_handler(
@@ -188,17 +155,64 @@ def make_handler(
     llm_cfg: Dict[str, Any],
     store: SessionStore,
     admin_root: Optional[str] = None,
-    tts=None,
     bank_provider=None,
 ):
     """`admin_root` = None означає, що адмінки в цьому запуску немає взагалі
-    (не «є, але закрита»). Див. app/api/admin.py про причину."""
+    (не «є, але закрита»). Див. app/api/admin.py про причину.
+
+    `default_entry`/`registry` — простір, з яким сервер запущено, завжди
+    лишається доступним без параметра (сумісність із деплоєм на один
+    простір, де ?space= ніхто не передає). Інші простори резолвляться
+    лише коли є `admin_root` (лише локальна розробка з --admin): без
+    нього невідомий ключ просто повертає той самий default_entry —
+    поведінка деплою на Vercel (один SPACE_KEY на процес) не міняється.
+    """
+    default_entry = _SpaceEntry(space, guide, store, bank_provider)
+    registry = {space.key: default_entry}  # type: Dict[str, _SpaceEntry]
+    registry_lock = threading.Lock()
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "InterviewTool"
 
         def log_message(self, fmt, *args):
             # Технічний лог без вмісту реплік — правило з architecture.md.
             print("[web] %s" % (fmt % args))
+
+        def _resolve_space(self, key: str) -> "_SpaceEntry":
+            key = (key or "").strip()
+            if not key or key == default_entry.space.key:
+                return default_entry
+            with registry_lock:
+                cached = registry.get(key)
+            if cached:
+                return cached
+            if not admin_root:
+                return default_entry
+            space_dir = os.path.join(admin_root, key)
+            if not os.path.isdir(space_dir):
+                return default_entry
+            try:
+                new_space, new_guide = space_module.load_space_dir(space_dir)
+            except Exception:
+                return default_entry
+            new_bank_provider = lambda: load_bank(space_dir)
+            new_store = SessionStore(new_space, new_guide, llm_cfg, new_bank_provider)
+            entry = _SpaceEntry(new_space, new_guide, new_store, new_bank_provider)
+            with registry_lock:
+                entry = registry.setdefault(key, entry)
+            return entry
+
+        def _use_space(self):
+            """Викликати на початку do_GET/do_POST — визначає self._space/
+            self._guide/self._store/self._bank за ?space= із URL, до
+            будь-якого маршруту, що на них покладається."""
+            parsed = urllib.parse.urlparse(self.path)
+            query = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
+            entry = self._resolve_space(query.get("space", ""))
+            self._space = entry.space
+            self._guide = entry.guide
+            self._store = entry.store
+            self._bank = entry.bank_provider
 
         # ── видача ───────────────────────────────────────────────────────
         def _send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
@@ -253,29 +267,6 @@ def make_handler(
                 self._send_json(body, status)
             return True
 
-        def _reload_tts(self):
-            """Перезібрати провайдера озвучення зі збереженого конфігу простору."""
-            if not admin_root:
-                self._send_json({"error": "адмінка вимкнена"}, 404)
-                return
-            try:
-                fresh_space = load_space(os.path.join(admin_root, space.key, "space.json"))
-            except (ConfigError, OSError) as exc:
-                self._send_json({"error": "конфіг простору: %s" % exc}, 400)
-                return
-            try:
-                provider = build_tts(dict(fresh_space.providers.get("tts", {}) or {}))
-            except ProviderError as exc:
-                self._send_json({"error": str(exc)}, 400)
-                return
-            tts.swap(provider)
-            # Оновлюємо й сам простір, щоб озвучення й правила каналу не розійшлись.
-            space.providers = fresh_space.providers
-            self._send_json({
-                "provider": provider.name if provider else "browser",
-                "voices": provider.voices() if provider else [],
-            })
-
         def _send_phrase_audio(self, phrase_id: str):
             """Аудіо шукається за id репліки, а не за іменем файла.
 
@@ -283,7 +274,7 @@ def make_handler(
             а не від клієнта.
             """
             try:
-                bank = bank_provider()
+                bank = self._bank()
             except PhraseError as exc:
                 self._send_json({"error": str(exc)}, 500)
                 return
@@ -305,24 +296,44 @@ def make_handler(
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_topic_audio(self, rest: str):
+            """Питання, записане голосом дослідника (не банк реплік вище —
+            той про вільну розповідь; це про сценарні питання гайда).
+            Публічний ендпоінт: респондент має його чути так само, як
+            дослідник — переслуховувати в панелі."""
+            parts = [p for p in rest.split("/") if p]
+            if len(parts) != 3 or not admin_root:
+                self._send_json({"error": "not found"}, 404)
+                return
+            try:
+                result = admin_api.read_topic_audio(admin_root, parts[0], parts[1], parts[2])
+            except admin_api.AdminError:
+                result = None
+            if result is None:
+                self._send_json({"error": "запису немає"}, 404)
+                return
+            content, mime = result
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(content)
+
         def do_GET(self):
             path = self.path.split("?")[0]
+            if not path.startswith("/api/admin"):
+                self._use_space()
+            if path.startswith("/audio/topic/"):
+                # Перед /audio/ нижче: той самий префікс, інша адресація
+                # (не id репліки з банку, а простір/гайд/тема).
+                self._send_topic_audio(path[len("/audio/topic/"):])
+                return
             if path.startswith("/audio/"):
                 self._send_phrase_audio(path[len("/audio/"):])
                 return
             if path.startswith("/voice/"):
                 self._send_voice(path[len("/voice/"):])
-                return
-            if path == "/api/tts/voices":
-                # Реальні голоси провайдера — щоб панель показувала те, що є.
-                if tts.current is None:
-                    self._send_json({"provider": "browser", "items": []})
-                    return
-                try:
-                    self._send_json({"provider": tts.current.name, "items": tts.current.voices()})
-                except ProviderError as exc:
-                    self._send_json(
-                        {"provider": tts.current.name, "items": [], "error": str(exc)}, 200)
                 return
             if self._try_admin("GET", path, {}):
                 return
@@ -340,88 +351,20 @@ def make_handler(
             else:
                 self._send_file(path.lstrip("/"))
 
-        def _speak(self, data: Dict[str, Any]):
-            """Озвучення на сервері.
-
-            ⚠️ Свідомо БЕЗ параметра тексту. Озвучується лише останнє питання
-            цієї ж сесії. Якби текст приймався з запиту, ендпоінт став би
-            безкоштовним TTS-проксі для будь-кого, хто його знайшов — а платить
-            за символи власник ключа.
-            """
-            if tts.current is None:
-                self._send_json({"error": "серверне озвучення не налаштоване"}, 404)
-                return
-            try:
-                session = store.get(data.get("session_id") or "")
-            except (KeyError, ValueError):
-                self._send_json({"error": "сесію не знайдено"}, 404)
-                return
-
-            text = next(
-                (turn["text"] for turn in reversed(session.turns) if turn["role"] == "interviewer"),
-                "",
-            )
-            if not text:
-                self._send_json({"error": "нема чого озвучувати"}, 409)
-                return
-
-            try:
-                audio = tts.current.synthesize(text)
-            except ProviderError as exc:
-                # Не змогли озвучити — не привід валити інтервʼю: клієнт
-                # покаже питання текстом.
-                self._send_json({"error": str(exc), "fallback": "text"}, 503)
-                return
-
-            self.send_response(200)
-            self.send_header("Content-Type", getattr(tts, "media_type", "audio/wav"))
-            self.send_header("Content-Length", str(len(audio)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(audio)
-
-        def _admin_preview(self, data: Dict[str, Any]):
-            """Прослуховування голосу в панелі.
-
-            Текст **фіксований** і заданий у коді. Голос обирається, текст — ні:
-            інакше це знову безкоштовний синтез чого завгодно, тільки тепер за
-            адресою адмінки.
-            """
-            if not admin_root:
-                self._send_json({"error": "адмінка вимкнена"}, 404)
-                return
-            if tts is None:
-                self._send_json({"error": "серверне озвучення не налаштоване"}, 404)
-                return
-            # Налаштування звучання приймаємо — щоб дослідник чув те, що
-            # накрутив, ще до збереження. Текст лишається фіксованим: саме він,
-            # а не параметри, був би тут дірою для безкоштовного синтезу.
-            try:
-                audio = _preview_audio(tts.current, data)
-            except ProviderError as exc:
-                self._send_json({"error": str(exc)}, 400)
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", getattr(tts.current, "media_type", "audio/wav"))
-            self.send_header("Content-Length", str(len(audio)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(audio)
 
         def do_POST(self):
             path = self.path.split("?")[0]
+            if not path.startswith("/api/admin"):
+                self._use_space()
             if path == "/api/voice":
                 # Так само бінарне тіло: _read_json спожив би аудіо й розібрав
                 # його як зламаний JSON.
                 self._upload_voice()
                 return
+            if path == "/api/admin/topic-audio":
+                self._upload_topic_audio()
+                return
             payload = self._read_json()
-            if path == "/api/admin/tts/preview":
-                self._admin_preview(payload)
-                return
-            if path == "/api/admin/tts/reload":
-                self._reload_tts()
-                return
             if self._try_admin("POST", path, payload):
                 return
             if path == "/api/start":
@@ -440,23 +383,23 @@ def make_handler(
                 self._history(payload)
             elif path == "/api/append":
                 self._append(payload)
-            elif path == "/api/speak":
-                self._speak(payload)
+            elif path == "/api/feedback":
+                self._feedback(payload)
             else:
                 self._send_json({"error": "not found"}, 404)
 
         # ── обробники ────────────────────────────────────────────────────
         def _space_payload(self) -> Dict[str, Any]:
             """Те, що клієнту треба знати. Ключів провайдерів тут немає й бути не може."""
+            space, guide = self._space, self._guide
             return {
                 "key": "%s/%s" % (space.key, guide.key),
-                "title": space.branding.get("page_title") or space.title,
+                "title": space.title,
                 "accent": space.branding.get("accent", "#3a3a3a"),
                 "consent_text": space.privacy.consent_text,
                 "languages": space.languages,
                 "voice": {
                     "stt": (space.providers.get("stt") or {}).get("provider", "none"),
-                    "tts": (space.providers.get("tts") or {}).get("provider", "none"),
                 },
                 "interface": {
                     "mode": space.interface.get("mode", "text"),
@@ -474,13 +417,12 @@ def make_handler(
                     "min_words_to_credit": space_module.MIN_WORDS_TO_CREDIT,
                 },
                 "repertoire": space.repertoire,
-                # Тільки параметри звучання. Ключі провайдерів у клієнт не їдуть
-                # ніколи — за це є тест (test_space_payload_has_no_secrets).
-                "tts": {
-                    k: v for k, v in (space.providers.get("tts") or {}).items()
-                    if k in ("voice", "rate", "pitch", "gap")
-                },
                 "topics_total": len(guide.topics),
+                # Екран подяки: текст і вигляд оцінки досвіду — інакше
+                # клієнт показав би завжди той самий жорстко закодований
+                # варіант, ігноруючи те, що дослідник змінив в адмінці.
+                "feedback_prompt": guide.feedback_prompt or "Як вам було проходити це інтервʼю?",
+                "feedback_style": guide.feedback_style,
             }
 
         def _checklist(self, session: Session):
@@ -499,20 +441,48 @@ def make_handler(
             info = session.progress_info()
             # Старі поля лишаємо для сумісності зі збереженими сесіями.
             info["covered"] = len(session.covered_topics)
-            info["total"] = len(guide.topics)
+            info["total"] = len(self._guide.topics)
             return info
 
         def _audio_url(self, phrase_id: Optional[str]) -> Optional[str]:
             return ("/audio/%s" % phrase_id) if phrase_id else None
 
+        def _current_recordable_topic_id(self, session) -> Optional[str]:
+            """id теми, ЯКЩО поточне питання — саме «Питання» (рівень 1,
+            ask_if_missed) сценарію: тільки для нього адмінка пропонує
+            записати голос, «Уточнення» (рівень 2) цей механізм не чіпає."""
+            if not session.script:
+                return None
+            question = session.current_question()
+            if not question or not (question.get("id") or "").endswith("/1"):
+                return None
+            return question.get("topic_id") or None
+
+        def _topic_audio_url(self, session) -> Optional[str]:
+            """Питання, начитане самим дослідником (адмінка → Налаштування →
+            питання → мікрофон) — якщо для поточного запис є, він іде
+            РЕСПОНДЕНТУ замість синтезу TTS: саме це й було ціллю фічі, не
+            текст, який озвучує ШІ."""
+            if not admin_root:
+                return None
+            topic_id = self._current_recordable_topic_id(session)
+            if not topic_id:
+                return None
+            try:
+                if not admin_api.topic_audio_exists(admin_root, self._space.key, self._guide.key, topic_id):
+                    return None
+            except admin_api.AdminError:
+                return None
+            return "/audio/topic/%s/%s/%s" % (self._space.key, self._guide.key, topic_id)
+
         def _bank_gaps(self) -> list:
-            if space.repertoire != "bank":
+            if self._space.repertoire != "bank":
                 return []
             try:
-                bank = bank_provider()
+                bank = self._bank()
             except PhraseError as exc:
                 return [str(exc)]
-            return bank.missing_for_interview([t.id for t in guide.topics])
+            return bank.missing_for_interview([t.id for t in self._guide.topics])
 
         def _start(self, data: Optional[Dict[str, Any]] = None):
             gaps = self._bank_gaps()
@@ -524,25 +494,32 @@ def make_handler(
                     "gaps": gaps,
                 }, 409)
                 return
-            if space.draft:
+            if self._space.draft:
                 self._send_json({
                     "error": "Простір '%s' — чернетка: він ще не заповнений. "
                              "Заповни його в панелі дослідника і познач як готовий."
-                             % space.key
+                             % self._space.key
                 }, 409)
                 return
+            respondent_name = ((data or {}).get("respondent_name") or "").strip()
+            if not respondent_name:
+                self._send_json({"error": "Вкажіть, будь ласка, ваше ПІБ."}, 400)
+                return
             try:
-                session = store.new()
+                session = self._store.new()
             except ProviderError as exc:
                 self._send_json({"error": str(exc)}, 503)
                 return
             # Згода на запис голосу приходить із екрана згоди. Простір може
             # запис не пропонувати взагалі — тоді згоди немає й бути не може.
             session.voice_consent = bool(
-                space.interface.get("record_voice", False)
+                self._space.interface.get("record_voice", False)
                 and (data or {}).get("record_voice"))
+            # ПІБ — теж з екрана згоди, до старту гайду: метадані для
+            # дослідника, не хід сценарію.
+            session.respondent_name = respondent_name
             utterance = session.start()
-            store.persist(session)
+            self._store.persist(session)
             last = session.turns[-1]
             self._send_json({
                 "session_id": session.session_id,
@@ -563,7 +540,7 @@ def make_handler(
         def _resume(self, data: Dict[str, Any]):
             """Повернення по тому самому посиланню — сценарій із edgecases.md."""
             try:
-                session = store.get(data.get("session_id") or "")
+                session = self._store.get(data.get("session_id") or "")
             except (KeyError, ValueError):
                 self._send_json({"error": "незавершеного інтервʼю не знайдено"}, 404)
                 return
@@ -576,13 +553,24 @@ def make_handler(
 
             last_turn = next(
                 (t for t in reversed(session.turns) if t["role"] == "interviewer"), {})
-            last = last_turn.get("text", "")
+            # У сценарії — те саме питання, що й на екрані (курсор), а не
+            # останнє з історії: та сама причина, що й у /api/speak — курсор
+            # рухається окремо від turns, і після «Попереднє» останнє в
+            # історії вже не те, що людина бачила перед тим, як пішла.
+            if session.script:
+                utterance = session.show_current()
+                audio_url = self._topic_audio_url(session)
+                source = (session.current_question() or {}).get("id", "")
+            else:
+                utterance = last_turn.get("text", "")
+                audio_url = self._audio_url(last_turn.get("phrase_id"))
+                source = last_turn.get("source", "")
             answered = len([t for t in session.turns if t["role"] == "respondent"])
             self._send_json({
                 "session_id": session.session_id,
-                "utterance": last,
-                "audio_url": self._audio_url(last_turn.get("phrase_id")),
-                "source": last_turn.get("source", ""),
+                "utterance": utterance,
+                "audio_url": audio_url,
+                "source": source,
                 "phase": session.phase_state.phase if session.plan else "",
                 "checklist": self._checklist(session),
                 "all_covered": self._all_covered(session),
@@ -613,13 +601,13 @@ def make_handler(
             query = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
             session_id = query.get("session_id", "")
             try:
-                session = store.get(session_id)
+                session = self._store.get(session_id)
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
             # Дві умови, і обидві обовʼязкові: простір це дозволяє І людина
             # погодилась. Без другої запис голосу був би зроблений потай.
-            if not space.interface.get("record_voice", False):
+            if not self._space.interface.get("record_voice", False):
                 self._send_json({"error": "запис голосу вимкнений у просторі"}, 403)
                 return
             if not getattr(session, "voice_consent", False):
@@ -644,9 +632,31 @@ def make_handler(
                 return
 
             session.pending_voice.append(name)
-            store.persist(session)
+            self._store.persist(session)
             self._send_json({"clip": name, "url": "/voice/%s/%s" % (session.session_id, name),
                              "pending": list(session.pending_voice)})
+
+        def _upload_topic_audio(self):
+            """Дослідник записав питання власним голосом у панелі — бінарне
+            тіло, так само як /api/voice."""
+            if not admin_root:
+                self._send_json({"error": "адмінка вимкнена (запусти з --admin)"}, 404)
+                return
+            parsed = urllib.parse.urlparse(self.path)
+            query = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > voice_files.MAX_CLIP_BYTES:
+                self._send_json({"error": "запис завеликий"}, 413)
+                return
+            data = self.rfile.read(length) if length else b""
+            try:
+                result = admin_api.save_topic_audio(
+                    admin_root, query.get("space", ""), query.get("guide", ""),
+                    query.get("topic", ""), self.headers.get("Content-Type", ""), data)
+            except admin_api.AdminError as exc:
+                self._send_json({"error": str(exc)}, exc.status)
+                return
+            self._send_json(result)
 
         def _send_voice(self, rel: str):
             """Віддача запису — для дослідника в панелі й для переслухування."""
@@ -676,7 +686,7 @@ def make_handler(
             """
             session_id = data.get("session_id") or ""
             try:
-                session = store.get(session_id)
+                session = self._store.get(session_id)
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
@@ -720,7 +730,7 @@ def make_handler(
             «зарахувала» модель сказане, — а вона робила це з точністю 64-71 %.
             """
             try:
-                session = store.get(data.get("session_id") or "")
+                session = self._store.get(data.get("session_id") or "")
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
@@ -743,10 +753,10 @@ def make_handler(
             # — POST /api/finish, після явного підтвердження людиною.
             session.go(delta)
             utterance = session.show_current()
-            store.persist(session)
+            self._store.persist(session)
             self._send_json({
                 "utterance": utterance,
-                "audio_url": None,
+                "audio_url": self._topic_audio_url(session),
                 "source": (session.current_question() or {}).get("id", ""),
                 "phase": session.phase_state.phase,
                 "checklist": self._checklist(session),
@@ -767,7 +777,7 @@ def make_handler(
             може повернутись щось дописати) — фінал стається лише тут.
             """
             try:
-                session = store.get(data.get("session_id") or "")
+                session = self._store.get(data.get("session_id") or "")
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
@@ -777,15 +787,51 @@ def make_handler(
             depth = session.answer_depth_stats()
             utterance = session.finish()
             payload = {"utterance": utterance, "done": True, "depth": depth}
-            saved = store.finish(session)
+            saved = self._store.finish(session)
             if saved:
                 payload["saved_to"] = saved
             self._send_json(payload)
 
+        def _feedback(self, data: Dict[str, Any]):
+            """Відгук про сам досвід проходження — після /api/finish, коли
+            транскрипт (sessions/*.json) уже закритий і перезаписувати його
+            не можна (пишеться один раз). Тому окреме сховище (save_feedback),
+            а не дописування в уже завершену сесію.
+            """
+            session_id = data.get("session_id") or ""
+            try:
+                found = store_files.load_session_by_id(session_id)
+            except ValueError:
+                found = None
+            if found is None:
+                self._send_json({"error": "сесію не знайдено"}, 404)
+                return
+            rating = data.get("rating")
+            if rating is not None:
+                try:
+                    rating = int(rating)
+                except (TypeError, ValueError):
+                    self._send_json({"error": "оцінка має бути числом"}, 400)
+                    return
+                if not (1 <= rating <= 5):
+                    self._send_json({"error": "оцінка — від 1 до 5"}, 400)
+                    return
+            # Без персональних даних тут ніхто не питає — це відгук про сам
+            # інструмент, не про тему дослідження, тому маскувати нема чого.
+            comment = (data.get("comment") or "").strip()[:2000]
+            if rating is None and not comment:
+                self._send_json({"error": "порожній відгук"}, 400)
+                return
+            store_files.save_feedback(session_id, {
+                "rating": rating, "comment": comment,
+                "submitted_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            })
+            self._send_json({"ok": True})
+
         def _history(self, data: Dict[str, Any]):
             """Що вже питали й що людина відповіла — щоб можна було повернутись."""
             try:
-                session = store.get(data.get("session_id") or "")
+                session = self._store.get(data.get("session_id") or "")
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
@@ -798,7 +844,7 @@ def make_handler(
             лишається тільки на дописування — попередня репліка не переписується.
             """
             try:
-                session = store.get(data.get("session_id") or "")
+                session = self._store.get(data.get("session_id") or "")
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
@@ -821,7 +867,7 @@ def make_handler(
                 self._send_json({"error": "модель недоступна: %s" % exc,
                                  "retryable": True}, 503)
                 return
-            store.persist(session)
+            self._store.persist(session)
             self._send_json({
                 "items": session.history(),
                 # Чекліст ПОТОЧНОГО питання: доповнення могло закрити пункт,
@@ -838,7 +884,7 @@ def make_handler(
                 self._send_json({"error": "порожня відповідь"}, 400)
                 return
             try:
-                session = store.get(session_id)
+                session = self._store.get(session_id)
             except (KeyError, ValueError):
                 self._send_json({"error": "сесію не знайдено"}, 404)
                 return
@@ -847,8 +893,7 @@ def make_handler(
                 return
 
             try:
-                turn = session.answer(
-                    text, finish_narrative=bool(data.get("finish_narrative")))
+                turn = session.answer(text)
             except ProviderError as exc:
                 # Деградація, а не обрив: респондент, який дійшов до 12-ї хвилини,
                 # не має втратити все (architecture.md → Правила взаємодії).
@@ -859,7 +904,7 @@ def make_handler(
             if turn.action == "recorded":
                 # Сценарієм веде людина: відповідь записана, наступний крок —
                 # її кнопка. Питання тут не змінюється.
-                store.persist(session)
+                self._store.persist(session)
                 self._send_json({
                     "recorded": True,
                     "checklist": self._checklist(session),
@@ -890,11 +935,11 @@ def make_handler(
                 "progress": self._progress(session),
             }
             if session.done:
-                saved = store.finish(session)
+                saved = self._store.finish(session)
                 if saved:
                     payload["saved_to"] = saved
             else:
-                store.persist(session)
+                self._store.persist(session)
             self._send_json(payload)
 
     return Handler
@@ -906,7 +951,6 @@ def serve(
     llm_cfg: Dict[str, Any],
     port: int = 8770,
     admin_root: Optional[str] = None,
-    tts=None,
     space_dir: Optional[str] = None,
 ):
     # Банк читається з диска на кожен запит: дослідник дозаписує репліки в
@@ -915,7 +959,6 @@ def serve(
     bank_provider = (lambda: load_bank(root)) if root else (lambda: load_bank("."))
 
     store = SessionStore(space, guide, llm_cfg, bank_provider)
-    holder = tts if isinstance(tts, TtsHolder) else TtsHolder(tts)
-    handler = make_handler(space, guide, llm_cfg, store, admin_root, holder, bank_provider)
+    handler = make_handler(space, guide, llm_cfg, store, admin_root, bank_provider)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), handler)
     return httpd

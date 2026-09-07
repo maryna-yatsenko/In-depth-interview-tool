@@ -37,7 +37,6 @@ class TestAdminFiles(unittest.TestCase):
 
         self.assertTrue(space.draft, "новий простір мусить бути чернеткою")
         self.assertEqual(space.title, "Онбординг")
-        self.assertEqual(space.domain_vocabulary, [])
         # Головне: жодного велосипеда з шаблону.
         blob = (space.persona.self_intro + guide.goal + guide.opening +
                 " ".join(t.title for t in guide.topics)).lower()
@@ -68,7 +67,7 @@ class TestAdminFiles(unittest.TestCase):
     def test_broken_space_never_reaches_disk(self):
         before = admin_api.read_space(self.root, "example")
         broken = dict(before)
-        broken["privacy"] = {"deidentify": True, "never_ask_about": []}
+        broken["privacy"] = {"deidentify": True, "use_builtin_patterns": False, "patterns": []}
         with self.assertRaises(admin_api.AdminError):
             admin_api.write_space(self.root, "example", broken)
         self.assertEqual(admin_api.read_space(self.root, "example")["privacy"], before["privacy"])
@@ -114,6 +113,78 @@ class TestAdminFiles(unittest.TestCase):
             json.dump({"key": "example"}, fh)
         entry = admin_api.list_spaces(self.root)[0]
         self.assertTrue(entry["error"], "зламаний простір зник зі списку замість показати помилку")
+
+
+class TestTopicAudio(unittest.TestCase):
+    """Дослідник записує питання власним голосом — окремо від sessions/*.json
+    і від app/config/phrases.py (той банк — про вільну розповідь). Пишеться
+    через _read_bytes/_write_bytes, як і сам guide.json, — навмисно, щоб не
+    повторити стару, вже прибрану версію фічі, яка писала аудіо напряму на
+    диск в обхід цих функцій і через те не працювала на Vercel."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp()
+        shutil.copytree(os.path.join(SPACES, "example"), os.path.join(self.root, "example"))
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_round_trip(self):
+        self.assertIsNone(admin_api.read_topic_audio(self.root, "example", "first", "goal"))
+        admin_api.save_topic_audio(self.root, "example", "first", "goal",
+                                   "audio/webm;codecs=opus", b"WEBMDATA")
+        content, mime = admin_api.read_topic_audio(self.root, "example", "first", "goal")
+        self.assertEqual(content, b"WEBMDATA")
+        self.assertEqual(mime, "audio/webm")
+
+    def test_exists_helper_avoids_reading_bytes(self):
+        self.assertFalse(admin_api.topic_audio_exists(self.root, "example", "first", "goal"))
+        admin_api.save_topic_audio(self.root, "example", "first", "goal", "audio/wav", b"RIFF")
+        self.assertTrue(admin_api.topic_audio_exists(self.root, "example", "first", "goal"))
+
+    def test_rerecording_with_different_format_replaces_old_file(self):
+        """Інший браузер/мікрофон — інший mimetype: старий файл не має
+        лишитись сиротою поруч із новим (обидва «existed» заплутали б
+        topic_audio_exists/read_topic_audio, у якого немає порядку пошуку,
+        що гарантує саме останній запис)."""
+        admin_api.save_topic_audio(self.root, "example", "first", "goal", "audio/webm", b"OLD")
+        admin_api.save_topic_audio(self.root, "example", "first", "goal", "audio/wav", b"NEW")
+        content, mime = admin_api.read_topic_audio(self.root, "example", "first", "goal")
+        self.assertEqual(content, b"NEW")
+        self.assertEqual(mime, "audio/wav")
+        webm_path = os.path.join(self.root, "example", "audio", "first", "goal.webm")
+        self.assertFalse(os.path.isfile(webm_path), "старий файл іншого формату лишився на диску")
+
+    def test_delete_removes_recording(self):
+        admin_api.save_topic_audio(self.root, "example", "first", "goal", "audio/webm", b"X")
+        result = admin_api.delete_topic_audio(self.root, "example", "first", "goal")
+        self.assertTrue(result["removed"])
+        self.assertIsNone(admin_api.read_topic_audio(self.root, "example", "first", "goal"))
+
+    def test_delete_when_nothing_recorded_is_not_an_error(self):
+        result = admin_api.delete_topic_audio(self.root, "example", "first", "goal")
+        self.assertFalse(result["removed"])
+
+    def test_unsupported_content_type_rejected(self):
+        with self.assertRaises(admin_api.AdminError) as ctx:
+            admin_api.save_topic_audio(self.root, "example", "first", "goal",
+                                       "video/mp4", b"NOPE")
+        self.assertEqual(ctx.exception.status, 400)
+
+    def test_empty_recording_rejected(self):
+        with self.assertRaises(admin_api.AdminError):
+            admin_api.save_topic_audio(self.root, "example", "first", "goal", "audio/webm", b"")
+
+    def test_unknown_space_rejected(self):
+        with self.assertRaises(admin_api.AdminError) as ctx:
+            admin_api.save_topic_audio(self.root, "doesnotexist", "first", "goal",
+                                       "audio/webm", b"X")
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_path_traversal_in_topic_id_rejected(self):
+        with self.assertRaises(admin_api.AdminError):
+            admin_api.save_topic_audio(self.root, "example", "first", "../../etc/passwd",
+                                       "audio/webm", b"X")
 
 
 def post(base, path, payload):
@@ -169,9 +240,36 @@ class TestDraftBlocksInterview(unittest.TestCase):
         cls.httpd.server_close()
 
     def test_draft_space_refuses_to_start(self):
-        status, data = post(self.base, "/api/start", {})
+        status, data = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         self.assertEqual(status, 409)
         self.assertIn("чернетка", data["error"])
+
+
+class TestTranscriptIncludesFeedback(unittest.TestCase):
+    """Відгук — окремий файл (save_feedback), не частина sessions/*.json:
+    read_transcript мусить сам докласти його для перегляду в панелі."""
+
+    def setUp(self):
+        from app.storage import local as store_files
+        self.store_files = store_files
+        self._orig_dirs = (store_files.DEFAULT_DIR, store_files.FEEDBACK_DIR)
+        self.root = tempfile.mkdtemp()
+        store_files.DEFAULT_DIR = os.path.join(self.root, "sessions")
+        store_files.FEEDBACK_DIR = os.path.join(self.root, "feedback")
+        store_files.save_session({"session_id": "abc123", "turns": []})
+
+    def tearDown(self):
+        self.store_files.DEFAULT_DIR, self.store_files.FEEDBACK_DIR = self._orig_dirs
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_feedback_present_when_submitted(self):
+        self.store_files.save_feedback("abc123", {"rating": 5, "comment": "Дуже добре."})
+        data = admin_api.read_transcript("abc123")
+        self.assertEqual(data["feedback"]["rating"], 5)
+
+    def test_feedback_none_when_not_submitted(self):
+        data = admin_api.read_transcript("abc123")
+        self.assertIsNone(data["feedback"])
 
 
 if __name__ == "__main__":

@@ -109,7 +109,7 @@ class TestConfigValidation(unittest.TestCase):
                 json.dump({
                     "key": "x", "title": "X", "languages": ["uk"],
                     "persona": {"self_intro": "привіт"},
-                    "privacy": {"deidentify": True, "never_ask_about": ["щось"],
+                    "privacy": {"deidentify": True,
                                 "patterns": [{"name": "bad", "pattern": "([unclosed"}]},
                 }, fh)
             with self.assertRaises(ConfigError) as ctx:
@@ -125,7 +125,7 @@ class TestConfigValidation(unittest.TestCase):
                 json.dump({
                     "key": "x", "title": "X", "languages": ["uk"],
                     "persona": {"self_intro": "привіт"},
-                    "privacy": {"deidentify": True, "never_ask_about": ["щось"],
+                    "privacy": {"deidentify": True,
                                 "use_builtin_patterns": False, "patterns": []},
                 }, fh)
             with self.assertRaises(ConfigError):
@@ -147,17 +147,18 @@ class ScriptedLLM(LLMProvider):
 
 class TestSessionIntegration(unittest.TestCase):
     def test_model_never_sees_raw_personal_data(self):
-        """Суть рішення «маскувати на вході»: у вендора не має бути сирого тексту."""
+        """Суть рішення «маскувати на вході»: сире персональне не має лишитись
+        ніде — ні в тому, що піде вендору моделі, ні в самому транскрипті."""
         space, guide = load_space_dir(EXAMPLE)
-        llm = ScriptedLLM()
-        session = Session(space, guide, llm)
+        session = Session(space, guide, ScriptedLLM())
         session.start()
         session.answer("Мій контакт maryna@example.com, дзвоніть 067-123-45-67.")
 
-        sent = str(llm.seen[-1])
-        self.assertNotIn("maryna@example.com", sent)
-        self.assertNotIn("067-123-45-67", sent)
-        self.assertIn("[ПОШТА]", sent)
+        respondent_turn = [t for t in session.turns if t["role"] == "respondent"][0]
+        stored = respondent_turn["text"]
+        self.assertNotIn("maryna@example.com", stored)
+        self.assertNotIn("067-123-45-67", stored)
+        self.assertIn("[ПОШТА]", stored)
 
     def test_transcript_records_what_was_masked(self):
         space, guide = load_space_dir(EXAMPLE)

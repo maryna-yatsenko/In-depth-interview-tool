@@ -1,133 +1,1530 @@
-/* Панель дослідника. Службовий інтерфейс: щільно, без церемоній —
-   правило профілю `tool` з пайплайну. */
+/* Панель дослідника.
 
-body.admin { background: var(--bg); }
+   Візуальна мова взята з дашборд-референсів (Untitled UI, LeadLogic,
+   Applyr, Alerts-панель): тонований «полотняний» фон, контент у білих
+   картках із мʼякою тінню, темна плаваюча ліва панель, великий заголовок
+   сторінки, пігулки-статуси. Це свідома відмова від попереднього
+   щільного «tool»-вигляду.
 
-.topbar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 14px 22px; border-bottom: 1px solid var(--line);
-  background: var(--surface); position: sticky; top: 0; z-index: 10;
+   Сітка відступів — кратна 8: 8 / 16 / 24 / 32 / 40px для padding/margin/
+   gap і для розмірів контролів (кнопки, іконки, аватари). Виняток —
+   справді мікроскопічні оптичні підправлення (1–3px зсуву тексту,
+   заокруглення дрібних декоративних елементів на кшталт семпла кольору):
+   там 8px ламає форму, а не впорядковує її. Радіус — два рівні: 8px для
+   контролів (кнопки, поля, чипи), 16px (= --radius) для контейнерів
+   (картки, модалки, панель). Пігулки/аватари лишаються 999px/50% —
+   це форма, а не відступ. */
+
+body.admin {
+  /* Фіолетова шкала — лише в адмінці, спільний :root у styles.css
+     лишається синім для сторінки респондента. */
+  --accent: #8b71ee;
+  --accent-soft: #c7b8f9;
+  --accent-strong: #8b71ee;
+  --heading: #5a33b5;
+  --accent-tint: color-mix(in srgb, var(--heading) 10%, var(--surface));
+  /* Нейтральний сірий тінт — для інформаційного/структурного (номер,
+     тег, нейтральна пігулка-значення), а не для реального статусу. Колір
+     лишається виключно для того, що дійсно має семантику (готово/
+     чернетка, оцінка, вибрана дія) — так у жодному з референсів (Edgegap,
+     графік змін, Construction) не фарбують довільні дані самим лише
+     бренд-кольором. */
+  --muted-tint: color-mix(in srgb, var(--muted) 12%, var(--surface));
+  /* Тло primary-кнопки — окремий, незалежний від теми токен (не --heading:
+     той у темній темі стає світлим для тексту-на-фоні, а кнопці завжди
+     потрібне ТЕМНЕ тло під білий текст, будь-яка тема). Той самий
+     найтемніший відтінок шкали, просто фіксований, а не той, що плаває. */
+  --primary-fill: #5a33b5;
+  /* Теплий помаранчевий — для дисклеймера-колауту нижче (за референсом
+     дашборда з драм-доставками — там саме такий теплий тонований фон,
+     не синій). Той самий патерн, що --good/--danger/--warn — теми свій
+     відтінок (темніший на світлому тлі, світліший на темному). Назва
+     --info лишилась історичною — це не семантичний "інформаційний"
+     колір десь іще, суто локальний токен саме під цей банер. */
+  --info: #ef7d4a;
+
+  /* Три рівні світлоти, не два: картки (--surface) лишаються білі й
+     "виступають", полотно сцени (--bg) і шапка (--head-bg) — два РІЗНІ
+     відтінки сірого, не той самий сірий і не білий в обох. Порядок
+     світлоти той самий в обох темах: surface (найсвітліше/картки) >
+     head-bg (шапка) > bg (найтемніше/полотно). */
+  --bg: #f5f4f2;
+  --head-bg: #f9f8f6;
+  --surface: #ffffff;
+  --line: #e8e6e2;
+  --radius: 16px;
+  --radius-sm: 8px;
+  /* --text/--muted зі styles.css (Mantine gray.9/gray.7) — прохолодні,
+     трохи в синяву (B>R): тут же --bg/--line теплі (R>B), і сірі
+     виглядали дисонансно поруч. Той самий трюк, що дав --line теплим —
+     переставлені місцями R/B каналів оригіналу, тож світлота (а отже й
+     контраст) лишається тим самим, лише відтінок тепліє. */
+  --text: #292521;
+  --muted: #575049;
+
+  /* Ліва панель раніше була темна завжди — це виявилось помилковим
+     прочитанням референсів: темна рамка в Serenity Guide — то бордер
+     макета-скріна (девайс/браузер), не сама бічна панель, вона там біла.
+     Такий самий світлий сайдбар і в Team Construction/Winfinity/
+     Real.Invest. Тому в світлій темі панель тепер збігається з тоном
+     карток — той самий --surface, лише лінія праворуч відділяє її від
+     --bg сцени. Темна панель лишається виключно в темній темі
+     (staff-scheduling, Edgegap — там вона справді темна за задумом). */
+  --rail-bg: var(--surface);
+  --rail-text: var(--text);
+  --rail-muted: var(--muted);
+  --rail-line: var(--line);
+
+  background: var(--bg);
 }
-.muted { color: var(--muted); }
-.tiny { font-size: 13px; }
-.flash { margin-left: auto; font-size: 14px; color: var(--muted); }
-.flash.ok { color: #2f7a52; }
-.flash.bad { color: var(--danger); }
 
-.layout { display: grid; grid-template-columns: 250px 1fr; min-height: calc(100vh - 53px); }
-.sidebar { border-right: 1px solid var(--line); padding: 18px 16px; }
-.sidebar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-
-.new-space {
-  background: var(--surface); border: 1px solid var(--accent);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  padding: 14px; margin-bottom: 14px;
+/* Тема — явний перемикач (кнопка в лівій панелі), а не лише системна
+   настройка: `data-theme` виставляє JS і памʼятає вибір. Без атрибута —
+   іде за системною темою, як і раніше. */
+@media (prefers-color-scheme: dark) {
+  body.admin:not([data-theme="light"]) {
+    --accent-soft: #5a33b5; --heading: #c7b8f9; --bg: #141415; --head-bg: #1a1a1c; --surface: #1d1d1f;
+    --line: #2a2a2d; --text: #e6e6e8; --muted: #97979e; --info: #ffab7a;
+    --rail-bg: #161617; --rail-text: #e9e9ea; --rail-muted: #909096; --rail-line: #2c2c30;
+  }
 }
-.new-space .actions { margin-top: 4px; }
-.new-space .error-text { display: block; margin: 8px 0 0; }
+/* Явний вибір теми мусить перевизначити ще й спільні токени styles.css
+   (--text/--muted/--danger/--good/--warn/--on-danger/--shadow-sm) — інакше
+   коли вибір суперечить системній темі (наприклад "світла" на темній ОС),
+   ті лишаться зі styles.css під систему, а не під вибір, і вийде темний
+   текст на темному чи світлий на світлому. Значення — точні з dark-блоку
+   styles.css, просто прикріплені й до явного вибору, не лише до системи. */
+body.admin[data-theme="dark"] {
+  --accent-soft: #5a33b5; --heading: #c7b8f9; --bg: #141415; --head-bg: #1a1a1c; --surface: #1d1d1f;
+  --line: #2a2a2d;
+  --rail-bg: #161617; --rail-text: #e9e9ea; --rail-muted: #909096; --rail-line: #2c2c30;
+  /* --text і --muted раніше майже зливались (c9c9c9/b8b8b8, різниця 17
+     одиниць) — у референсах завжди чітко видно 2-3 рівні ваги тексту, тут
+     же на око все виглядало одним й тим самим сірим. Розведено так само
+     контрастно, як і в світлій темі (там розрив 212529→495057 помітний). */
+  --text: #e6e6e8; --muted: #97979e; --danger: #ff6b6b; --on-danger: #141414;
+  --good: #69db7c; --warn: #ffa94d; --check: #38d9a9; --info: #ffab7a;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .3), 0 10px 15px -5px rgba(0, 0, 0, .3), 0 7px 7px -5px rgba(0, 0, 0, .2);
+}
+body.admin[data-theme="light"] {
+  --text: #292521; --muted: #575049; --danger: #c92a2a; --on-danger: #fff;
+  --good: #277c38; --warn: #c3410e; --check: #087f5b;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .05), 0 10px 15px -5px rgba(0, 0, 0, .05), 0 7px 7px -5px rgba(0, 0, 0, .04);
+}
 
-.space-list { list-style: none; margin: 0 0 16px; padding: 0; }
-.space-list li { margin-bottom: 4px; }
+/* ── Каркас ──────────────────────────────────────────────────────────── */
+
+.app {
+  --rail-w: 264px;
+  display: grid; grid-template-columns: var(--rail-w) 1fr;
+  gap: 0; min-height: 100vh; align-items: start;
+  transition: grid-template-columns .18s ease;
+}
+/* Згорнута панель — вужча колонка, лише іконки (Askk AI: кнопка-перемикач
+   біля лого/трафік-лайтів, а не в підвалі). */
+.app.rail-collapsed { --rail-w: 56px; }
+
+/* Ліва панель прикріплена до країв вікна (зліва/зверху/знизу), а не
+   плаваюча картка з відступом і заокругленням з усіх боків — так, як
+   бічні панелі в усіх референсах (Edgegap, staff-scheduling, Serenity). */
+.rail {
+  background: var(--rail-bg); color: var(--rail-text);
+  border-radius: 0; padding: 24px 12px;
+  border-right: 1px solid var(--rail-line);
+  position: sticky; top: 0;
+  height: 100vh; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+
+/* Верхній рядок панелі — перемикач теми зліва, кнопка згортання справа:
+   обидва висотою 32px (.rail-collapse-btn), щоб рядок не "розтягувався"
+   між згорнутим і розгорнутим станом. */
+.rail-top { display: flex; align-items: center; justify-content: space-between; padding: 0 0 28px; }
+/* Радіус — 5px: та сама пропорція до розміру (~1/6), що й у великих
+   кнопок (.primary/.ghost — 8px на 48px), а не той самий фіксований 8px,
+   який на 32px-кнопці читався б помітно круглішим за великі. */
+body.admin .rail-collapse-btn {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line); color: var(--rail-muted);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
+}
+.rail-collapse-btn .icon, .rail-collapse-btn svg { width: 16px; height: 16px; }
+body.admin .rail-collapse-btn:hover {
+  color: var(--rail-text);
+  border-color: color-mix(in srgb, var(--rail-text) 22%, var(--rail-line));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+  transform: translateY(-1px);
+}
+.rail-collapse-btn:active:not(:disabled) { transform: translateY(0); }
+
+/* Перемикач теми — той самий трек-тогл із двома іконками (сонце/місяць)
+   і рухомою пігулкою, що й раніше, лише зменшений до висоти 32px — щоб
+   візуально вирівнюватись із кнопкою згортання поруч у верхньому рядку
+   (замість колишніх 48px внизу окремо). Пігулка й комірки масштабовані
+   пропорційно вниз (40px → 26px), а не просто обрізана висота. */
+.theme-switch {
+  position: relative;
+  flex: none; display: flex; gap: 0;
+  width: 58px; height: 32px; padding: 2px;
+  border-radius: 8px;
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 16px -8px rgba(20, 20, 20, .16);
+}
+.theme-switch::before {
+  content: "";
+  position: absolute; top: 2px; left: 2px;
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-strong) 32%, var(--primary-fill)) 0%,
+    var(--primary-fill) 75%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 10px -4px rgba(20, 20, 20, .45);
+  transition: transform .2s ease;
+}
+.theme-switch[data-active="dark"]::before { transform: translateX(100%); }
+
+body.admin .theme-btn {
+  position: relative; z-index: 1;
+  width: 26px; height: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center; border-radius: 6px;
+  background: transparent; border: none; color: var(--rail-muted);
+}
+.theme-btn svg { width: 14px; height: 14px; opacity: .75; transition: color .15s ease, opacity .15s ease; }
+.theme-btn:hover:not(.active) { color: var(--rail-text); }
+.theme-btn:hover:not(.active) svg { opacity: .95; }
+body.admin .theme-btn.active { color: #fff; }
+.theme-btn.active svg { opacity: 1; }
+
+.rail-label {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0; margin-bottom: 16px;
+  font-size: 16px; font-weight: 700; letter-spacing: -.01em;
+  color: var(--rail-text);
+}
+.rail-label-group { display: flex; align-items: center; gap: 8px; }
+/* Лічильник досліджень — той самий рецепт бейджа, що й .pill (6px
+   border-radius, не 999px-пігулка — узгоджений раніше вигляд бейджів),
+   лише в кольорах панелі (rail-line/rail-muted), а не основного полотна. */
+.rail-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 6px; background: var(--rail-line); color: var(--rail-muted);
+  font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.rail-count:empty { display: none; }
+/* "Кошик" — підпис ліворуч, лічильник+іконка згруповані праворуч
+   (простий simple simple-list вигляд, а не центрований напис): текст і
+   ця група — єдині два флекс-діти кнопки, space-between розводить їх по
+   краях, а сама група тримає свій внутрішній gap так само, як решта
+   кнопки. Лічильник завжди показує число, включно з 0 — не ховається,
+   коли кошик порожній. */
+.rail-link { justify-content: space-between; }
+.rail-link-meta { display: flex; align-items: center; gap: 8px; }
+/* "+" (нове дослідження) — другорядний контрол, той самий скелет
+   (тло+тінь), що й решта кнопок-іконок панелі (rail-collapse-btn,
+   rail-link): інакше в одній і тій самій панелі частина кнопок мала б
+   обʼєм, а частина лишалась пласкою тінню самої себе. Іконка — svg, не
+   текстовий символ "+": гліф шрифту не centeрувався рівно по колу навіть
+   під flex-центруванням, векторна лінія — точна.
+   Скруглення — 4px, та сама пропорція до розміру (~1/6), що й у великих
+   кнопок (.primary/.ghost — 8px на 48px) і в .rail-collapse-btn (5px на
+   32px) — інакше на різних розмірах однаковий px-радіус читається як
+   різна "круглість". */
+body.admin .rail-add {
+  width: 24px; height: 24px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line); border-radius: 4px;
+  color: var(--rail-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
+}
+.rail-add svg { width: 14px; height: 14px; }
+body.admin .rail-add:hover {
+  border-color: color-mix(in srgb, var(--rail-text) 22%, var(--rail-line));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+  transform: translateY(-1px);
+}
+.rail-add:active:not(:disabled) { transform: translateY(0); }
+
+.space-list { list-style: none; margin: 0 0 20px; padding: 0; }
+.space-list li { margin-bottom: 6px; }
 .space-list button {
-  width: 100%; text-align: left; background: transparent; border: 1px solid transparent;
-  color: var(--text); padding: 9px 11px; font-size: 15px;
+  display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left;
+  color: var(--rail-text); padding: 8px 16px; font-size: 14.5px;
+  border-radius: var(--radius-sm); line-height: 1.4; height: auto;
+  /* Та сама картка (тло + рамка + тінь), що й квадрат-іконка в
+     згорнутому вигляді — рядок списку в розгорнутому мусить лишатись
+     тим самим компонентом, не пласким текстовим пунктом без меж. */
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
 }
-.space-list button:hover { border-color: var(--line); }
-.space-list button.active { background: var(--surface); border-color: var(--accent); }
-.space-list .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+/* Іконка завжди фіолетова, незалежно від активного стану — так само, як
+   у Public Grid: там кожен пункт (Overview/Billing/Services/Household)
+   має кольорову іконку, і лише фон+вага тексту міняються при виборі. */
+.space-list button .icon { flex: none; width: 18px; height: 18px; margin-top: 1px; color: var(--heading); }
+.space-list-text { display: flex; flex-direction: column; min-width: 0; }
+.space-list button:hover {
+  background: var(--rail-bg);
+  border-color: color-mix(in srgb, var(--rail-text) 22%, var(--rail-line));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+}
+/* Активний пункт — суцільна бліда лавандова пігулка на всю ширину пункту,
+   без лівої смужки-акценту (Public Grid: саме пласка підкладка, не бар). */
+.space-list button.active {
+  background: var(--accent-tint);
+  border-color: color-mix(in srgb, var(--accent-strong) 35%, var(--rail-line));
+  color: var(--heading); font-weight: 500;
+}
+.space-list .sub { display: block; font-size: 14px; color: var(--rail-muted); margin-top: 4px; }
+.space-list button.active .sub { color: var(--accent-soft); }
+/* Дата створення — світліша й medium, не той самий рецепт, що .sub
+   (той ще й для помилки використовується, там колір/вага мають лишитись
+   як є). opacity, не блідіший color-token — світлішає однаково в обох
+   темах, без окремого підбору відтінку на кожну. */
+.space-list .space-date { display: block; font-size: 14px; font-weight: 500; color: var(--rail-muted); opacity: .7; margin-top: 4px; }
+/* Дата лишається сірою й в активному рядку — на відміну від .sub/іконки,
+   вона не несе сенсу "вибрано", тому фарбувати її під акцент зайве. */
 .space-list .broken { color: var(--danger); }
 .space-list .draft-tag {
-  display: inline-block; font-size: 11px; margin-left: 6px;
-  padding: 1px 6px; border-radius: 10px;
-  border: 1px solid var(--muted); color: var(--muted);
+  display: inline-block; font-size: 14px; margin-left: 8px; vertical-align: 1px;
+  padding: 4px 8px; border-radius: 999px; letter-spacing: .04em;
+  background: color-mix(in srgb, var(--rail-text) 10%, transparent); color: var(--rail-muted); border: none;
+}
+.space-list button.active .draft-tag { background: color-mix(in srgb, var(--accent-strong) 30%, transparent); color: var(--heading); }
+
+/* Поле з семплом кольору всередині — видно відтінок, а не тільки hex. */
+.input-with-swatch { position: relative; display: block; margin-top: 8px; }
+.input-with-swatch input[type="text"] { padding-left: 40px; margin-top: 0; }
+.swatch {
+  /* Дрібний декоративний елемент — 8px тут зробив би з нього коло, а не
+     квадратик із заокругленим кутом, тому лишається пропорційним собі. */
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; border-radius: 4px; z-index: 1;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
 }
 
-.content { padding: 22px 26px 120px; max-width: 860px; }
+.rail-foot { margin-top: auto; padding-top: 28px; }
+/* Радіус — 7px: та сама пропорція до розміру (~1/6), що й у великих
+   кнопок (8px на 48px) — рядок тут ~43px заввишки, тому не той самий
+   фіксований 8px, що на решті великих кнопок. */
+.rail-link {
+  position: relative;
+  display: flex; width: 100%; align-items: center; gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--rail-line); color: var(--rail-text);
+  font-size: 14px; font-weight: 600; padding: 10px 12px; border-radius: 7px; height: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
+}
+.rail-link:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+  transform: translateY(-1px);
+}
+.rail-link:active:not(:disabled) { transform: translateY(0); }
 
-.tabs { display: flex; gap: 4px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
-.tab { background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 14px; border-radius: 0; }
-.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }
+/* Згорнута панель — лишаються лише іконки, по центру вузької колонки;
+   текстові підписи ховаються (не стискаються в нечитабельний рядок). */
+.rail-collapsed .rail { padding-left: 12px; padding-right: 12px; }
+.rail-collapsed .rail-top { justify-content: center; padding-left: 0; padding-right: 0; }
+.rail-collapsed .theme-switch,
+.rail-collapsed .rail-label span:first-child,
+.rail-collapsed .new-space,
+.rail-collapsed .space-list-text,
+.rail-collapsed .rail-link span { display: none; }
+.rail-collapsed .rail-label { justify-content: center; padding: 0; }
+.rail-collapsed .space-list button,
+.rail-collapsed .rail-link,
+body.admin .rail-collapsed .rail-add { justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 5px; }
+/* .space-list li/.rail-foot лишаються на всю ширину панелі — самі кнопки
+   (32px) центруються в них через margin, так само, як #btn-rail-collapse/
+   #btn-new-space центровані justify-content:center у своїх flex-батьках:
+   інакше вони липнуть до лівого краю (padding рядка), а не стоять в один
+   стовпчик з рештою квадратів. */
+.rail-collapsed .space-list button,
+.rail-collapsed .rail-link { margin-left: auto; margin-right: auto; }
+/* Пункти списку досліджень у згорнутому вигляді — той самий рецепт
+   білої кнопки-іконки з рамкою й тінню, що й .rail-collapse-btn/.rail-link
+   зверху: інакше серед однакових квадратів частина мала б обʼєм, а
+   частина лишалась пласкою фіолетовою іконкою без нічого навколо.
+   align-items: center — іконка в звичайному стані сидить угорі (flex-start,
+   вирівняно з першим рядком назви), тут же лишається саме іконка, тож
+   вирівнюємо її по центру квадрата, а не по колишньому "верху рядка". */
+.rail-collapsed .space-list button {
+  align-items: center;
+  background: var(--rail-bg);
+  border: 1px solid var(--rail-line); border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
+}
+.rail-collapsed .space-list button .icon { margin-top: 0; }
+.rail-collapsed .space-list button:hover {
+  background: var(--rail-bg);
+  border-color: color-mix(in srgb, var(--rail-text) 22%, var(--rail-line));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+  transform: translateY(-1px);
+}
+.rail-collapsed .space-list button:active:not(:disabled) { transform: translateY(0); }
+/* Активний пункт лишається впізнаваним — лавандове тло замість білого,
+   рамка в тон акценту — замість суцільної пігулки на всю ширину, якою
+   він був у розгорнутому вигляді (тут ширини "на всю" вже нема). */
+.rail-collapsed .space-list button.active {
+  background: var(--accent-tint);
+  border-color: color-mix(in srgb, var(--accent-strong) 35%, var(--rail-line));
+}
+.rail-collapsed .rail-link { border-radius: 5px; }
+/* Той самий рецепт потемніння рамки на ховер, що й у великих кнопок
+   (rail-collapse-btn/rail-add) — "Кошик" тут лишався єдиною другорядною
+   кнопкою без цього ефекту. */
+.rail-collapsed .rail-link:hover {
+  border-color: color-mix(in srgb, var(--rail-text) 22%, var(--rail-line));
+}
 
-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+/* Форма нового дослідження живе всередині панелі — колір поля рахується
+   від --rail-text/--rail-bg, а не від жорсткого чорного/білого, тому й
+   світла, і темна панель дають однаково "втоплене" поле. */
+.new-space {
+  background: color-mix(in srgb, var(--rail-text) 5%, transparent); border: 1px solid var(--rail-line);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+}
+.new-space label { color: var(--rail-muted); font-size: 14px; }
+.new-space input {
+  background: color-mix(in srgb, var(--rail-text) 6%, var(--rail-bg)); border-color: var(--rail-line); color: var(--rail-text);
+  font-size: 14px; padding: 8px;
+}
+/* nowrap + flex:1 на кнопках — не wrap: дві кнопки одна під одною,
+   якщо разом трохи ширші за вузьку колонку панелі (як було з .small
+   паддінгами тут), а мають стояти строго поруч, порівну ділячи ширину. */
+.new-space .actions { margin-top: 8px; gap: 8px; flex-wrap: nowrap; }
+.new-space .actions button { flex: 1 1 0; padding-left: 0; padding-right: 0; }
+.new-space .error-text { display: block; margin: 8px 0 0; }
+
+/* ── Сцена ───────────────────────────────────────────────────────────── */
+
+/* Шапка — не картка (без рамки/тіні), але інший тон фону, ніж полотно
+   контенту нижче: біла, як панель і картки, на всю ширину сцени, а не
+   лише в межах 972px-колонки — тому фон і без рамки читається як окрема
+   зона, не просто текст на тому самому тлі. Внутрішній .page-head-inner
+   тримає той самий 972px, що й .stage-content, щоб заголовок і картки
+   лишались вирівняними. */
+.page-head-block {
+  background: var(--head-bg); border-bottom: 1px solid var(--line);
+  padding: 24px 24px 0 32px;
+}
+.page-head-inner { max-width: 972px; }
+.stage-content { padding: 24px 24px 120px 32px; max-width: 972px; }
+
+.page-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin: 0 0 16px;
+}
+.page-head-text { display: flex; align-items: center; gap: 12px; }
+.page-head h1 {
+  font-size: 30px; font-weight: 700; letter-spacing: -.02em;
+  margin: 0 0 8px; color: var(--text);
+}
+.page-head-side { display: flex; align-items: center; gap: 8px; flex: none; }
+/* Копіювати посилання — компактна іконка-кнопка, той самий рецепт, що
+   й .modal-close (прозоре коло, м'який ховер), а не текстова кнопка з
+   підписом: 12px від останнього слова заголовка (gap на .page-head-text). */
+.copy-link-btn {
+  position: relative;
+  flex: none; width: 28px; height: 28px; padding: 0; display: grid; place-items: center;
+  background: transparent; border: none; border-radius: 999px; color: var(--muted); cursor: pointer;
+}
+.copy-link-btn svg { width: 16px; height: 16px; display: block; }
+.copy-link-btn:hover { background: transparent; color: var(--text); }
+/* Фідбек копіювання — просто зелений колір самої іконки на пару секунд,
+   без тексту-повідомлення десь ще. */
+.copy-link-btn.copied, .copy-link-btn.copied:hover { color: var(--good); }
+/* Тултіп — спільний компонент для будь-якої іконки-кнопки (не лише
+   .copy-link-btn): суцільна заливка без бордера (не два трикутники з
+   рамкою) — хвостик той самий квадрат 45°, тим самим кольором, що й
+   тіло, і заходить під нього на половину — шов між ними просто не
+   існує, бо немає контрастного контуру, який міг би його виказати.
+   Легкий translateY у transition — плавна поява, не миттєвий стрибок
+   opacity. position: absolute виключає тултіп із розкладки самої
+   кнопки (grid/flex батька його не чіпає). Кнопка-носій (.copy-link-btn,
+   .icon-btn, ...) мусить мати position: relative — тултіп рахує top/left
+   від неї. */
+.tooltip {
+  position: absolute; top: calc(100% + 10px); left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: var(--surface); color: var(--text);
+  border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 500;
+  white-space: nowrap; box-shadow: 0 6px 20px -4px rgba(20, 20, 20, .22);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease, visibility .18s ease;
+  z-index: 5;
+}
+.tooltip::before {
+  content: ""; position: absolute; bottom: 100%; left: 50%;
+  width: 9px; height: 9px; margin-left: -4.5px; margin-bottom: -4.5px;
+  background: inherit; transform: rotate(45deg); border-radius: 2px;
+}
+.copy-link-btn:hover .tooltip, .copy-link-btn:focus-visible .tooltip,
+.icon-btn:hover .tooltip, .icon-btn:focus-visible .tooltip {
+  opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
+}
+
+/* Статусні пігулки: суцільне пласке тло (без градієнта — попередня
+   версія з ним виглядала занадто помітно) + тонка обводка того самого
+   відтінку (28%). Колір тексту/іконки — чистий семантичний токен
+   (--good/--danger/--warn/--muted), без домішки. */
+/* Флет-чип без обводки — насиченіший тонований фон (28%, не 14%) сам
+   несе колір статусу, рамка тут лише дублювала його блідою лінією.
+   Радіус — 6px, не 999px: за референсом статус-чипи мʼяко заокруглений
+   прямокутник, не стадіон-пігулка (і трохи менший за --radius-sm 8px —
+   той самий принцип, що й у .tab-badge). */
+/* #page-status — тепер <button>: height задаємо явно (базові 48px
+   button{height} інакше виграють), 38px — та сама висота, що й у поля
+   мов і ліміту реплік поруч у стрічці метаданих. */
+.status-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 38px; box-sizing: border-box; cursor: pointer;
+  font-size: 14px; font-weight: 600; padding: 5px 14px 5px 10px; border-radius: 6px;
+  background: color-mix(in srgb, var(--muted) 28%, var(--surface));
+  color: var(--muted);
+  border: none; transition: background .15s ease, box-shadow .15s ease;
+}
+.status-chip .icon { width: 15px; height: 15px; flex: none; display: block; }
+/* filter: brightness() на пастельних кольорах був майже непомітний —
+   явний темніший відтінок фону саме під кожен статус, а не універсальний
+   множник, що на світлому пастельному тлі не давав видимої різниці. */
+.status-chip.draft:hover { background: #e4e1dd; }
+.status-chip.live:hover { background: #c7ecd3; }
+/* Чернетка — нейтральний сірий (немає сенсу "жовтий" статус для того,
+   що просто ще не готове). Фіксований світлий відтінок, не var(--muted)
+   напряму — той у світлій темі темний (#495057), як текст бейджа це
+   виглядало важче, ніж пастельний зелений/жовтий поруч. */
+.status-chip.draft {
+  background: #f0eeec;
+  color: #7d756c;
+}
+.status-chip.live {
+  background: #dcf7e3;
+  color: #1b7a3d;
+}
+
+/* Статус — дропдаун із двома варіантами в стрічці метаданих, той самий
+   патерн шеврона й панелі, що й .select. Тригер лишається кольоровим
+   (.status-chip draft/live) і 38px заввишки — як інші поля стрічки
+   (.meta-input, .chip-box) — а активний стан і обраний рядок панелі —
+   той самий фіолетовий акцент, що й у звичайного .select, не кольорова
+   крапка. */
+.status-select { position: relative; display: inline-flex; }
+.status-chevron { width: 12px; height: 12px; transition: transform .15s ease; }
+.status-select.open .status-chevron { transform: rotate(180deg); }
+/* currentColor — обідок кольору самого статусу (зелений на "Опубліковано",
+   жовтий на "Чернетка"), а не завжди фіолетовий: .status-chip.draft/.live
+   уже задають color під конкретний стан, і в обох темах теж. */
+.status-select.open .status-trigger {
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 30%, transparent);
+}
+.status-panel {
+  position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; right: auto;
+  display: flex; flex-direction: column; gap: 4px; min-width: 176px;
+  padding: 8px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 16px 40px -12px rgba(20, 20, 20, .3), 0 2px 6px rgba(20, 20, 20, .06);
+}
+.status-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: auto; text-align: left;
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  color: var(--text); font-size: 14px; font-weight: 400; padding: 8px 12px;
+}
+/* Той самий принцип, що .select-option: ховер — нейтральний, колір
+   несе лише реально обраний рядок (фіолетовий, не зелений/жовтий —
+   тут це просто вибір поля, а не сам індикатор статусу). */
+.status-option:hover { background: var(--muted-tint); }
+.status-option.selected { background: var(--accent-tint); color: var(--heading); font-weight: 500; }
+
+/* Темна тема: прозорий фон, кольоровий border і світліший (не той самий,
+   що в світлій темі) відтінок тексту — інакше на темному фоні контраст
+   слабкий, як показав референс. */
+@media (prefers-color-scheme: dark) {
+  body.admin:not([data-theme="light"]) .status-chip.draft {
+    background: rgba(151, 151, 158, 0.12);
+    border: 1px solid rgba(151, 151, 158, 0.4);
+    color: #b8b8be;
+  }
+  body.admin:not([data-theme="light"]) .status-chip.live {
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    color: #34d399;
+  }
+  /* Прозорий фон темної теми на майже прозорому тлі — той самий 12%
+     майже не читається на ховері, тому тут відчутно вища непрозорість
+     (22%), а не той самий множник, що для пастельних кольорів світлої. */
+  body.admin:not([data-theme="light"]) .status-chip.draft:hover {
+    background: rgba(151, 151, 158, 0.22);
+  }
+  body.admin:not([data-theme="light"]) .status-chip.live:hover {
+    background: rgba(52, 211, 153, 0.22);
+  }
+}
+body.admin[data-theme="dark"] .status-chip.draft {
+  background: rgba(151, 151, 158, 0.12);
+  border: 1px solid rgba(151, 151, 158, 0.4);
+  color: #b8b8be;
+}
+body.admin[data-theme="dark"] .status-chip.live {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #34d399;
+}
+body.admin[data-theme="dark"] .status-chip.draft:hover {
+  background: rgba(151, 151, 158, 0.22);
+}
+body.admin[data-theme="dark"] .status-chip.live:hover {
+  background: rgba(52, 211, 153, 0.22);
+}
+
+.flash { font-size: 14px; color: var(--muted); }
+.flash.ok { color: var(--good); }
+.flash.bad { color: var(--danger); }
+.muted { color: var(--muted); }
+.tiny { font-size: 14px; }
+
+/* Тонке підкреслення, не залита пігулка — жоден з трьох референсів
+   (Alerts/Kanban/Relay) не заливає активну вкладку суцільним кольором,
+   всі тримають її тихою: колір тексту + легка лінія знизу. */
+.tabs {
+  display: flex; gap: 24px; margin-bottom: 0;
+  /* Без border-bottom: у власній картці межу вже дає рамка картки —
+     друга лінія тут виглядала б задвоєною. Відступ знизу дає padding
+     картки-шапки, не власний margin. */
+}
+/* Пряме підкреслення, без заокруглення: базовий radius кнопок гнув лінію
+   дугою, тому radius тут перекривається сильнішим селектором. */
+.tabs .tab {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); padding: 8px 0; border-radius: 0;
+  font-size: 14px; font-weight: 500; height: auto; margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--heading); border-bottom-color: var(--accent-strong); font-weight: 600; }
+/* Бейдж-лічильник біля назви вкладки — квадратна форма (6px, не
+   --radius-sm 8px: на такій низькій (20px) висоті навіть 8px читався
+   майже повним піллом), явна висота замість line-height, щоб радіус
+   рахувався від фіксованого боксу, а не від "плаваючої" висоти рядка. */
+.tab-badge {
+  display: none; margin-left: 8px; padding: 0 7px; border-radius: 6px;
+  min-width: 20px; height: 20px; line-height: 20px; text-align: center;
+  font-size: 14px; font-weight: 700;
+  background: color-mix(in srgb, var(--muted) 15%, transparent); color: var(--muted);
+}
+.tab-badge:not(:empty) { display: inline-block; }
+/* Білий текст на насиченому --accent-strong — контраст як у первинної
+   кнопки, а не темний текст на середньому тоні (той читався блякло). */
+.tab.active .tab-badge { background: var(--accent-strong); color: #fff; }
+
+/* ── Картки ──────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(20, 20, 20, .04), 0 8px 24px -12px rgba(20, 20, 20, .14);
+}
+.card-head { padding: 16px 24px 0; }
+.card-head h2 {
+  font-size: 16px; font-weight: 700; margin: 0 0 4px;
+  color: var(--text); letter-spacing: -.01em;
+}
+.card-head p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
+.card-body { padding: 16px 24px 24px; }
+
+/* Стрічка метаданих під заголовком картки — мітка+значення в один
+   рядок, буквально Status/Priority-рядок із Kanban task detail. */
+.meta-strip {
+  display: flex; flex-wrap: wrap; gap: 24px;
+  padding: 16px 24px; margin-top: 0;
+  border-bottom: 1px solid var(--line);
+}
+.meta-field { display: flex; flex-direction: column; gap: 8px; }
+.meta-label {
+  font-size: 14px; font-weight: 500; letter-spacing: .06em;
+  color: var(--muted);
+}
+/* height: 38px !important — та сама висота, що й у чип-поля мов і
+   статус-дропдауна поруч у стрічці метаданих: усі три поля мають бути
+   плюс-мінус однакові, а не кожне своєї органічної висоти. */
+.meta-input {
+  margin-top: 0 !important; width: auto !important; min-width: 88px;
+  font-size: 14px !important; padding: 8px !important;
+  height: 38px !important; box-sizing: border-box;
+}
+/* Мови — чип-поле (initChipField ховає сам input, малює .chip-box
+   поруч), тому ширину задаємо на обгортці .meta-field, а не на самому
+   (прихованому) input: типовий meta-field на це не розрахований. */
+.meta-field-wide { flex: 1 1 260px; min-width: 260px; max-width: 420px; }
+.meta-field-wide .chip-box { margin-top: 0; }
+
+/* ── Дропдаун ────────────────────────────────────────────────────────── */
+
+/* Власний дропдаун замість нативного select: поле з шевроном, плаваюча
+   панель із мʼякою тінню, підсвітка рядка по ховеру, галочка на обраному
+   — саме той компонент, що в референсі зі списком країн. */
+.select { position: relative; display: block; margin-top: 8px; }
+.select-native { display: none !important; }
+
+.select-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: auto; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--text); font-size: 15px; font-weight: 400; padding: 8px 12px;
+}
+.select-trigger .icon { flex: none; color: var(--muted); transition: transform .15s ease; }
+.select-trigger:hover { border-color: color-mix(in srgb, var(--accent-strong) 45%, var(--line)); }
+.select.open .select-trigger {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+}
+.select.open .select-trigger .icon { transform: rotate(180deg); }
+.select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.select-panel {
+  position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; right: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 16px 40px -12px rgba(20, 20, 20, .3), 0 2px 6px rgba(20, 20, 20, .06);
+  max-height: 260px; overflow-y: auto;
+}
+.select-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: auto; text-align: left;
+  background: transparent; border: none; border-radius: var(--radius-sm);
+  color: var(--text); font-size: 14.5px; font-weight: 400; padding: 8px 12px;
+}
+/* Ховер рядка — це лише наведення, не вибір: нейтральний сірий, як у
+   контекстному меню референсу планування змін (кольором позначений
+   тільки РЕАЛЬНО обраний рядок нижче, .selected). */
+.select-option:hover { background: var(--muted-tint); }
+.select-option.selected { background: var(--accent-tint); color: var(--heading); font-weight: 500; }
+.select-option .icon { display: none; }
+
+/* Компактний варіант-пігулка для стрічки метаданих (той самий тригер, що
+   в Kanban Status/Priority) — але сірий, не фіолетовий: обраний гайд це
+   довільне значення поля, не статус (на відміну від СТАТУС поруч, де
+   зелений/сірий дійсно щось означає) — рівно та дисципліна кольору, яку
+   видно у Edgegap-тегах і сірих stat-пігулках графіка змін. */
+.select-pill { display: inline-block; margin-top: 0; }
+.select-pill .select-trigger {
+  width: auto; gap: 8px; padding: 4px 8px; border-radius: 999px;
+  border-color: transparent; background: var(--muted-tint); color: var(--text);
+  font-size: 14px; font-weight: 600;
+}
+.select-pill .select-trigger::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); flex: none;
+}
+.select-pill .select-trigger .icon { color: var(--muted); }
+.select-pill .select-trigger:hover { background: color-mix(in srgb, var(--muted) 20%, var(--surface)); border-color: transparent; }
+.select-pill .select-panel { left: 0; right: auto; min-width: 176px; }
+
+/* Підказка-колаут — за референсом промо-банерів (Apply for Visa/Find
+   Destinations): суцільна кольорова заливка (не серпанок-градієнт), проста
+   лінійна ілюстрація праворуч і кнопка закриття — це підказка, яку можна
+   прибрати назавжди, побачивши один раз. */
+/* Теплий помаранчевий (var(--info)), не фіолетовий акцент і не
+   попередній синій — за референсом теплого drone-дашборда. */
+/* Ілюстрація — .callout-media, порожня flex-обгортка (img усередині
+   абсолютний, поза потоком, нуль власного вмісту), яка через
+   align-self: stretch завжди бере РІВНО ту висоту, яку в цьому
+   конкретному рендері зайняв текстовий блок (єдиний реальний "вміст"
+   рядка) — і жодним пікселем більше. Немає жодного окремого
+   min-height/формули з фіксованим "запасом": попередні спроби або
+   не оновлювались коректно при переносі рядків (текст обрізався), або
+   форсували банер вищим за текст (роздування). Тут нема чого
+   форсувати — рядок і так природно дорівнює висоті тексту, зображення
+   (object-fit: contain) саме вписується в неї, з'являючись більшим чи
+   меншим залежно від того, скільки рядків тексту вийшло. */
+.callout {
+  --callout-img: clamp(85px, 27cqw, 190px);
+  position: relative; overflow: hidden; container-type: inline-size;
+  display: flex; gap: 14px; align-items: flex-start;
+  background: color-mix(in srgb, var(--info) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+  border-radius: var(--radius); padding: 20px 8px 20px 20px; margin-bottom: 16px;
+}
+.callout .callout-close {
+  /* padding: 0 — базове правило button задає 0 20px, і з box-sizing:
+     border-box це не давало кнопці стиснутись до заявлених 24px
+     (реальна ширина була 40px, іконка сиділа далі від краю, ніж мала). */
+  position: absolute; top: 12px; right: 12px; z-index: 2;
+  width: 24px; height: 24px; padding: 0; display: grid; place-items: center;
+  background: transparent; border: none; border-radius: 999px;
+  color: var(--muted); cursor: pointer;
+}
+.callout-close svg { width: 14px; height: 14px; }
+/* Лише іконка (color = currentColor у svg) реагує на ховер — без
+   тла-заливки навколо, той самий блакитний, що й у фону банера. */
+.callout-close:hover { background: transparent; color: var(--info); }
+/* Без окремого padding-right під зображення: .callout-media — такий
+   самий звичайний flex-сусід у рядку (flex: none, своя ширина), тож
+   простір під неї й так природно виключений з ширини .callout-body
+   (flex: 1 1 auto бере лише те, що лишилось) — власний
+   padding-right тут раніше ПОВТОРНО забирав той самий простір і
+   стискав текст у вузьку колонку. */
+.callout-body { position: relative; z-index: 1; min-width: 140px; flex: 1 1 auto; }
+/* Класичний текстовий колір продукту (var(--text)), не фіолетовий
+   --heading — заголовок підказки читається як звичайний текст, не
+   як бренд-акцент. */
+.callout-title { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.01em; color: var(--text); margin-bottom: 4px; }
+.callout p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--muted); }
+/* Без min-height: ілюстрація мусить бути рівно заввишки з текстовим
+   блоком (заголовок + основний текст), не вищою за нього — align-self:
+   stretch і так дає точно ту висоту, яку зайняв .callout-body, жодного
+   штучного мінімуму зверху не потрібно. */
+.callout-media { flex: none; align-self: stretch; position: relative; width: var(--callout-img); }
+.callout-illustration {
+  /* object-position: left (не center) — коли текст короткий, блок стає
+     широким-але-низьким, і contain стискає квадрат зображення до малого
+     розміру; center лишало б цей маленький квадрат висіти посередині
+     широкого блоку, відірваним від правого краю. transform: scaleX(-1)
+     віддзеркалює весь блок ПІСЛЯ позиціювання вмісту — тому "left" тут
+     після дзеркалення й дає прикріплення саме до правого краю. */
+  /* object-position Y: -11% — від'ємне значення, не 0%: саме зображення
+     (PNG) має власний прозорий відступ згори (~10.5% висоти полотна,
+     перевірено по альфа-каналу), тому 0% (=впритул box'а) все одно
+     лишало видиму частину малюнка нижче верху. Від'ємний зсув виносить
+     цей прозорий запас за межі box'а (обрізається, як і будь-який інший
+     replaced-контент, що виходить за рамку) — і саме видима частина
+     малюнка опиняється впритул до верху. */
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1;
+  object-fit: contain; object-position: left -11%;
+  transform: scaleX(-1);
+}
+
+/* ── Поля ────────────────────────────────────────────────────────────── */
+
+label { display: block; font-size: 14px; font-weight: 500; color: var(--muted); margin-bottom: 16px; }
 label.block { display: block; }
-label.check { display: flex; align-items: center; gap: 9px; font-size: 15px; color: var(--text); }
+/* font-weight: 400 — явно, а не через font: inherit: без цього поля,
+   вкладені в жирний лейбл (напр. .pinned-question label.block, 700),
+   самі теж ставали жирними, тоді як інші поля (без такого предка)
+   лишались regular — текст усередині мав бути однаковим скрізь. */
 input[type="text"], input[type="number"], select, textarea {
-  display: block; width: 100%; margin-top: 6px;
-  font: inherit; font-size: 15px; color: var(--text); background: var(--surface);
-  border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+  display: block; width: 100%; margin-top: 8px;
+  font: inherit; font-size: 15px; font-weight: 400; color: var(--text); background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px;
+  transition: border-color .12s ease, box-shadow .12s ease;
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+}
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card-body > label:last-child, .card-body > .row:last-child { margin-bottom: 0; }
+.card-body > .row:last-child label { margin-bottom: 0; }
 
-.section-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 6px; }
-.section-head h2 { font-size: 19px; font-weight: 700; margin: 0; color: var(--heading); }
-button.small { padding: 6px 11px; font-size: 13px; }
+/* Чипи, що знімаються, + поле додавання в одній рамці — Tags із Kanban і
+   тег-адер з модалки Create project, замість голого "через кому" поля. */
+.chip-box {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-top: 8px; padding: 4px 8px; min-height: 38px; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface);
+  cursor: text;
+}
+.chip-box:focus-within {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+}
+/* Мова — довільний тег, не статус: сірий, як нейтральні чипи в
+   Edgegap ("matchmaking", "production"), не бренд-фіолетовий. */
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 4px 4px 12px; border-radius: 999px;
+  background: var(--muted-tint); color: var(--text);
+  font-size: 14px; font-weight: 500; line-height: 1.4;
+}
+.chip-remove {
+  display: grid; place-items: center; width: 16px; height: 16px; padding: 0;
+  color: var(--muted); opacity: .6; background: transparent; border: none; border-radius: 50%;
+}
+.chip-remove .icon { width: 12px; height: 12px; }
+.chip-remove:hover { opacity: 1; background: color-mix(in srgb, var(--muted) 20%, transparent); }
+.chip-typer {
+  flex: 1 1 64px; min-width: 64px; border: none !important; background: transparent !important;
+  padding: 4px !important; margin: 0 !important; font-size: 14px !important; box-shadow: none !important;
+}
 
-.topics-text { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+/* ── Питання ─────────────────────────────────────────────────────────── */
+
+/* Пунктир — структурна позначка (перше/останнє питання не переставити),
+   не запрошення до дії, тому нейтрально сірий, не фіолетовий. */
+.pinned-question {
+  position: relative;
+  background: color-mix(in srgb, var(--bg) 50%, var(--surface));
+  border: 1px dashed color-mix(in srgb, var(--muted) 40%, var(--line));
+  border-radius: var(--radius); padding: 16px 24px 8px; margin-bottom: 16px;
+}
+/* "Початок"/"Кінець" — позиція в списку, не статус: сірий підпис, як
+   uppercase-заголовки груп ("TODAY", "LAST WEEK") у референсі чату. */
+.pin-chip {
+  display: inline-block; margin-bottom: 8px;
+  font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 999px;
+  background: var(--muted-tint); color: var(--muted);
+}
+.pinned-question label.block { margin-bottom: 16px; font-size: 16px; font-weight: 700; color: var(--text); }
+
+.topic-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(20, 20, 20, .04), 0 8px 24px -12px rgba(20, 20, 20, .12);
+  padding: 20px; margin-bottom: 16px;
+}
+/* Номер + назва секції ("Питання") + видалення — один короткий рядок,
+   тому просте центрування по вертикалі, без трюків із flex-end. Gap
+   тут не задаємо на контейнері — номер→заголовок і заголовок→кнопка
+   потребують різної відстані, тому кожен проміжок заданий окремо
+   (margin на .topic-title-label і на .icon-btn.topic-remove). */
+.topic-card-head { display: flex; align-items: center; }
+/* Порядковий номер — не статус, тому сірий, не фіолетовий, і без
+   плашки-фону: просто цифра поруч із заголовком. Текст притиснутий
+   ліворуч (не center) — інакше центрування в min-width боксі додає
+   зайвий "прихований" відступ поверх відступу до заголовка. */
+.topic-number {
+  flex: none; min-width: 16px; height: 24px;
+  display: flex; align-items: center;
+  color: var(--muted);
+  font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+/* Заголовок картки — сама назва питання окремим полем більше не
+   вводиться (для звітів береться текст питання), тут лишається лише
+   ярлик секції. margin-left: 8px — саме відстань від номера до
+   заголовка, окремо від відстані до кнопки видалення праворуч. */
+.topic-title-label { flex: 1; margin-left: 2px; font-size: 16px; font-weight: 700; color: var(--text); }
+.topic-field { margin-top: 12px; }
+/* Видалити питання — фіксований розмір іконки-кнопки (не на всю
+   висоту рядка, як інші icon-btn поруч із полями): у шапці картки
+   немає поля, з висотою якого треба узгоджуватись. font-size менший
+   за базовий .icon-btn (16px) — у квадратній 32px кнопці велика
+   іконка виглядає невідповідно масивною. */
+.icon-btn.topic-remove {
+  align-self: center; width: 32px; height: 32px; min-width: 32px; padding: 0; margin-left: 12px;
+  font-size: 14px;
+}
+
+/* Роздільник перед чеклістом — "Питання"/"Уточнення" і "Про що варто
+   сказати" це різні за призначенням секції картки, лінія розділяє їх
+   так само, як лінія під шапкою картки в іншому місці інтерфейсу. */
+.must-learn-block { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.must-learn-label { font-size: 14px; font-weight: 500; letter-spacing: .04em; color: var(--muted); margin-bottom: 8px; }
+.must-learn-list {
+  display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;
+}
+.must-learn-item { display: flex; gap: 8px; align-items: center; }
+.must-learn-item.dragging { opacity: .4; }
+.must-learn-item input { margin-top: 0; flex: 1; }
+.must-learn-handle {
+  flex: none; width: 16px; text-align: center; color: var(--muted);
+  cursor: grab; opacity: .35; transition: opacity .15s ease;
+}
+.must-learn-item:hover .must-learn-handle { opacity: 1; }
+.must-learn-number { flex: none; min-width: 16px; font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* "+ додати пункт" — той самий делікатний стиль, що й "+ Додати
+   питання": пунктирна зона, не звичайна кнопка.
+   48px зліва = ручка (16px) + gap (8px) + номер (16px) + gap (8px) —
+   те саме зміщення, з якого починається сам input; 96px віднімаємо
+   праворуч = ще gap (8px) + кнопка "×" (40px) + gap (8px) + ті самі
+   48px зліва — так правий край кнопки збігається з правим краєм
+   самого input, а не заходить у проміжок перед "×".
+   !important — вище за body.admin .ghost (сильніша специфічність),
+   звідки інакше лишились би тло, тінь і колір рамки звичайної
+   secondary-кнопки. */
+.must-learn-add {
+  margin-left: 48px; width: calc(100% - 96px); box-sizing: border-box;
+  padding: 8px 16px; font-size: 14px;
+  background: transparent !important; box-shadow: none !important; color: var(--muted) !important;
+  border: 1px dashed color-mix(in srgb, var(--muted) 30%, var(--line)) !important;
+}
+.must-learn-add:hover {
+  /* !important на color — вище за body.admin .ghost:hover (сильніша
+     специфічність), звідки інакше програвав би колір тексту: рамка
+     фіолетовіла б через свій !important, а текст лишався б звичайним
+     темним. Фон лишається прозорим (не білим!) — по наведенню міняється
+     лише колір рамки й тексту, на насичений фіолетовий тон основної
+     кнопки. */
+  background: transparent !important; color: var(--primary-fill) !important;
+  border-color: var(--primary-fill) !important; transform: none !important;
+}
+
+/* Кнопки-іконки (видалити питання/пункт/запис) — та сама секондарі-
+   обводка, що й інші дії картки: тонка видима рамка в спокої, кольором
+   danger лише на ховері (це деструктивна дія). Висота — рівно як у
+   сусіда в рядку (поля чи заголовка), align-self: stretch, а не
+   вгадане число. */
+.icon-btn {
+  position: relative;
+  flex: none; display: grid; place-items: center;
+  min-width: 40px; padding: 0 8px; height: auto; align-self: stretch;
+  background: transparent; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--muted); font-size: 16px; line-height: 1;
+}
+.icon-btn:hover:not(:disabled) {
+  background: transparent;
+  border-color: var(--danger); color: var(--danger);
+}
+.icon-btn:disabled { opacity: .35; }
+/* Відновити — позитивна/нейтральна дія, не деструктивна: той самий
+   рецепт ховеру, що й .record-btn (потемніння, не колір-код), а не
+   червоний .icon-btn за замовчуванням. */
+.icon-btn.restore:hover:not(:disabled) {
+  background: var(--surface); border-color: color-mix(in srgb, var(--muted) 55%, var(--line));
+  color: var(--text);
+}
+
+.record-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+/* Запис голосу — секондарі-кнопка з обводкою, як і решта дій картки. */
+.record-btn {
+  background: transparent; border-color: var(--line); box-shadow: none;
+  color: var(--muted);
+}
+.record-btn:hover:not(:disabled) {
+  background: var(--surface); border-color: color-mix(in srgb, var(--muted) 55%, var(--line));
+  color: var(--text); transform: none;
+}
+.record-btn.active {
+  color: var(--danger); border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.topic-audio-player { height: 32px; max-width: 220px; flex: 1 1 auto; min-width: 160px; }
+.topic-audio-delete { flex: none; color: var(--muted); }
+.topic-audio-delete:hover {
+  background: transparent;
+  color: var(--danger); border-color: var(--danger);
+}
+.record-status { flex: none; }
+
+/* Кнопка додавання — пунктирна зона, а не звичайна кнопка: вона
+   продовжує список карток, а не стоїть поруч із ним. Нейтрально сіра в
+   спокої (як "+ Add new subtask" у Kanban-референсі — плейн текст, не
+   бренд-колір), легкий фіолетовий тінт лише на ховері як натяк, що
+   клікабельно. */
+.add-topic {
+  width: 100%; margin-bottom: 16px; height: auto; padding: 8px;
+  background: transparent; color: var(--muted); font-weight: 500; font-size: 14px;
+  border: 1px dashed color-mix(in srgb, var(--muted) 30%, var(--line));
+  border-radius: var(--radius);
+}
+/* Той самий рецепт ховеру, що й .must-learn-add ("+ додати пункт") —
+   фон лишається прозорим, лише рамка й текст/іконка переходять у
+   фіолетовий основної кнопки. */
+.add-topic:hover {
+  background: transparent; color: var(--primary-fill);
+  border-color: var(--primary-fill);
+}
+
+/* ── Дії ─────────────────────────────────────────────────────────────── */
+
+/* Один спільний скелет для всіх кнопок: той самий радіус, той самий
+   керований відступ між іконкою й підписом (gap, а не випадковий пробіл
+   у рядку тексту), той самий "натуральний" двоколірний градієнт
+   (світліше згори — ніби на кнопку падає світло, темніше знизу), тільки
+   різної інтенсивності: насичений для primary, ледь тонований
+   "паперовий" для ghost. Так другорядні кнопки читаються як молодші
+   сестри головної, а не з іншої системи. */
+body.admin button {
+  position: relative; border-radius: var(--radius-sm); gap: 8px;
+  transition: background .15s, border-color .15s, color .15s, box-shadow .15s, transform .15s;
+}
+/* Радіус — 6px, не той самий 8px, що на великих кнопках: .small нижчий
+   (~38-40px проти 48px), той самий px тут читався б круглішим. */
+button.small { padding: 8px 16px; font-size: 14px; height: auto; border-radius: 6px; gap: 8px; }
+body.admin button .icon { order: 2; }
+
+/* Тло темніше за --accent (той лишається для рамок/фокусу/тінтів —
+   там колір лише allusion, не суцільна заливка з текстом на ній) — з
+   білим текстом контраст ≥6:1 по всій висоті градієнта, і в світлій,
+   і в темній темі. */
+body.admin .primary {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-strong) 32%, var(--primary-fill)) 0%,
+    var(--primary-fill) 75%);
+  color: #fff; font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .35),
+    0 1px 1px rgba(20, 20, 20, .18),
+    0 8px 16px -8px rgba(20, 20, 20, .35),
+    0 24px 32px -16px rgba(20, 20, 20, .3);
+}
+body.admin .primary:hover:not(:disabled) {
+  filter: none; transform: translateY(-2px);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent-strong) 40%, var(--primary-fill)) 0%,
+    var(--primary-fill) 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .4),
+    0 1px 1px rgba(20, 20, 20, .18),
+    0 16px 24px -8px rgba(20, 20, 20, .4),
+    0 32px 40px -16px rgba(20, 20, 20, .35);
+}
+body.admin .primary:active:not(:disabled) {
+  transform: translateY(0);
+  background: var(--primary-fill);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), 0 1px 1px rgba(20, 20, 20, .18), 0 8px 8px -8px rgba(20, 20, 20, .3);
+}
+
+/* .primary.danger — той самий рецепт заливки/тіні, що й .primary
+   (звідси й успадковує форму та розмір), лише яскраво-червоний градієнт
+   замість фіолетового: для єдиної справді деструктивної й головної дії
+   в модалці (перенести в кошик) — той самий візуальний вагар, що й
+   "Зберегти", а не тьмяна контурна кнопка серед другорядних danger-
+   станів (ті лишаються outline, див. button.danger/.icon-btn вище).
+   color: #fff — явно: button.danger (контурний рецепт, `color: var(
+   --danger)`) специфічніший за голий .primary, інакше текст був би
+   червоний, а не білий, і в спокої також, не лише на hover. */
+body.admin .primary.danger {
+  background: linear-gradient(180deg, #ff6b6b 0%, #c92a2a 75%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .35),
+    0 1px 1px rgba(20, 20, 20, .18),
+    0 8px 16px -8px rgba(20, 20, 20, .35),
+    0 24px 32px -16px rgba(20, 20, 20, .3);
+}
+body.admin .primary.danger:hover:not(:disabled) {
+  /* color: #fff — явно, інакше button.danger:hover (контурний стиль
+     інших danger-кнопок, вищий за .primary сам по собі пріоритет)
+     підмішував би сюди червоний текст замість білого. Тінь — той самий
+     нейтральний темний рецепт, що й .primary:hover, не червоний тінт. */
+  background: linear-gradient(180deg, #ff8787 0%, #c92a2a 70%);
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .4),
+    0 1px 1px rgba(20, 20, 20, .18),
+    0 16px 24px -8px rgba(20, 20, 20, .4),
+    0 32px 40px -16px rgba(20, 20, 20, .35);
+}
+body.admin .primary.danger:active:not(:disabled) { background: #c92a2a; }
+
+/* Тло — суцільний --surface (білий), без тонування: тонований градієнт
+   лише сірив кнопку. Обʼєм дає бордер + тінь, не перепад кольору. */
+body.admin .ghost {
+  background: var(--surface);
+  color: var(--text); border-color: var(--line); font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
+}
+body.admin .ghost:hover {
+  color: var(--text); border-color: color-mix(in srgb, var(--text) 22%, var(--line));
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+}
+body.admin .ghost:active:not(:disabled) { transform: translateY(0); }
+
+/* Темна тема: та сама фізика, але внутрішній світлик і зовнішня тінь
+   рахуються від чорного тла, інакше "світлик" на темній кнопці читався б
+   як брудна пляма, не як грань. */
+@media (prefers-color-scheme: dark) {
+  body.admin:not([data-theme="light"]) .primary,
+  body.admin:not([data-theme="light"]) .primary:hover:not(:disabled),
+  body.admin:not([data-theme="light"]) .primary:active:not(:disabled),
+  body.admin:not([data-theme="light"]) .ghost,
+  body.admin:not([data-theme="light"]) .ghost:hover,
+  body.admin:not([data-theme="light"]) .theme-switch,
+  body.admin:not([data-theme="light"]) .rail-link,
+  body.admin:not([data-theme="light"]) .rail-link:hover,
+  body.admin:not([data-theme="light"]) .rail-collapse-btn,
+  body.admin:not([data-theme="light"]) .rail-collapse-btn:hover,
+  body.admin:not([data-theme="light"]) .rail-add,
+  body.admin:not([data-theme="light"]) .rail-add:hover,
+  body.admin:not([data-theme="light"]) .space-list button,
+  body.admin:not([data-theme="light"]) .space-list button:hover { box-shadow: none; }
+  body.admin:not([data-theme="light"]) .primary {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 16px -8px rgba(0, 0, 0, .6), 0 24px 32px -16px rgba(0, 0, 0, .55);
+  }
+  body.admin:not([data-theme="light"]) .primary:hover:not(:disabled) {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 16px 24px -8px rgba(0, 0, 0, .7), 0 32px 40px -16px rgba(0, 0, 0, .6);
+  }
+  body.admin:not([data-theme="light"]) .theme-switch {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 8px 16px -8px rgba(0, 0, 0, .45);
+  }
+  body.admin:not([data-theme="light"]) .ghost,
+  body.admin:not([data-theme="light"]) .rail-link,
+  body.admin:not([data-theme="light"]) .rail-collapse-btn,
+  body.admin:not([data-theme="light"]) .rail-add,
+  body.admin:not([data-theme="light"]) .space-list button {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 4px 8px -6px rgba(0, 0, 0, .35);
+  }
+  body.admin:not([data-theme="light"]) .ghost:hover,
+  body.admin:not([data-theme="light"]) .rail-link:hover,
+  body.admin:not([data-theme="light"]) .rail-collapse-btn:hover,
+  body.admin:not([data-theme="light"]) .rail-add:hover,
+  body.admin:not([data-theme="light"]) .space-list button:hover {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 8px 12px -6px rgba(0, 0, 0, .45);
+  }
+  body.admin:not([data-theme="light"]) .theme-switch {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--rail-text) 6%, var(--rail-bg)),
+      color-mix(in srgb, var(--rail-text) 13%, var(--rail-bg)));
+  }
+  body.admin:not([data-theme="light"]) .theme-btn svg { opacity: .6; }
+  body.admin:not([data-theme="light"]) .theme-btn:hover:not(.active) svg { opacity: .85; }
+  /* Світлий персиковий фон — на відміну від попередніх темних варіантів,
+     тут текст мусить бути ТЕМНИМ, інакше світлий (для темної теми)
+     напис зникає на світлому тлі. Рамка — 1px, яскравий насичений
+     оранжевий (не тьмяний коричнево-оранжевий, як був). */
+  body.admin:not([data-theme="light"]) .callout {
+    background: #ffe6d3;
+    border: 1px solid #e8a878;
+  }
+  body.admin:not([data-theme="light"]) .callout-title { color: #241a08; }
+  body.admin:not([data-theme="light"]) .callout p { color: #46381c; }
+  body.admin:not([data-theme="light"]) .callout-close { color: #46381c; }
+  body.admin:not([data-theme="light"]) .callout-close:hover { color: #241a08; }
+  /* --primary-fill — фіксований темний фіолетовий незалежно від теми,
+     на чорному тлі читається як "дуже темний"; --heading тут світлий
+     лавандовий (той самий, що й іконки/активний пункт списку). */
+  body.admin:not([data-theme="light"]) .must-learn-add:hover {
+    color: var(--heading) !important; border-color: var(--heading) !important;
+  }
+  body.admin:not([data-theme="light"]) .add-topic:hover {
+    color: var(--heading); border-color: var(--heading);
+  }
+  /* Тло — той самий --surface, що й у .topic-card/.card (звичайна темна
+     картка, не світла лавандова плашка, як було раніше): активний пункт
+     має читатись як "той самий контейнер, що й решта карток", лише з
+     фіолетовою обводкою (--a78bfa лишається — саме вона, а не тло, каже
+     "це вибрано"). Текст/іконка — назад на var(--heading) (як у базовому
+     світлому правилі вище): світла лавандова плашка з темним текстом
+     була потрібна лише для контрасту на світлому тлі, тепер тло темне. */
+  body.admin:not([data-theme="light"]) .space-list button.active {
+    background: var(--surface);
+    border-color: #a78bfa;
+    color: var(--heading);
+  }
+}
+body.admin[data-theme="dark"] .primary {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 16px -8px rgba(0, 0, 0, .6), 0 24px 32px -16px rgba(0, 0, 0, .55);
+}
+body.admin[data-theme="dark"] .primary:hover:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 16px 24px -8px rgba(0, 0, 0, .7), 0 32px 40px -16px rgba(0, 0, 0, .6);
+}
+body.admin[data-theme="dark"] .theme-switch {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 8px 16px -8px rgba(0, 0, 0, .45);
+}
+body.admin[data-theme="dark"] .ghost,
+body.admin[data-theme="dark"] .rail-link,
+body.admin[data-theme="dark"] .rail-collapse-btn,
+body.admin[data-theme="dark"] .rail-add,
+body.admin[data-theme="dark"] .space-list button {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 4px 8px -6px rgba(0, 0, 0, .35);
+}
+body.admin[data-theme="dark"] .ghost:hover,
+body.admin[data-theme="dark"] .rail-link:hover,
+body.admin[data-theme="dark"] .rail-collapse-btn:hover,
+body.admin[data-theme="dark"] .rail-add:hover,
+body.admin[data-theme="dark"] .space-list button:hover {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 8px 12px -6px rgba(0, 0, 0, .45);
+}
+body.admin[data-theme="dark"] .theme-switch {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--rail-text) 6%, var(--rail-bg)),
+    color-mix(in srgb, var(--rail-text) 13%, var(--rail-bg)));
+}
+body.admin[data-theme="dark"] .theme-btn svg { opacity: .6; }
+body.admin[data-theme="dark"] .theme-btn:hover:not(.active) svg { opacity: .85; }
+body.admin[data-theme="dark"] .callout {
+  background: #ffe6d3;
+  border: 1px solid #e8a878;
+}
+body.admin[data-theme="dark"] .callout-title { color: #241a08; }
+body.admin[data-theme="dark"] .callout p { color: #46381c; }
+body.admin[data-theme="dark"] .callout-close { color: #46381c; }
+body.admin[data-theme="dark"] .callout-close:hover { color: #241a08; }
+body.admin[data-theme="dark"] .must-learn-add:hover {
+  color: var(--heading) !important; border-color: var(--heading) !important;
+}
+body.admin[data-theme="dark"] .add-topic:hover {
+  color: var(--heading); border-color: var(--heading);
+}
+/* Тло — той самий --surface, що й у .topic-card/.card, не світла
+   лавандова плашка: активний пункт читається як "той самий контейнер",
+   лише з фіолетовою обводкою (--a78bfa лишається — саме вона каже
+   "це вибрано"). Текст/іконка — назад на var(--heading), як у базовому
+   світлому правилі вище. */
+body.admin[data-theme="dark"] .space-list button.active {
+  background: var(--surface);
+  border-color: #a78bfa;
+  color: var(--heading);
+}
 
 .actions.sticky {
-  position: sticky; bottom: 0; background: var(--bg);
-  padding: 16px 0; border-top: 1px solid var(--line); margin-top: 26px;
+  position: sticky; bottom: 0; z-index: 5;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  padding: 16px 0; margin: 24px 0;
+  border-top: 1px solid var(--line);
 }
 .error-text { color: var(--danger); font-size: 14px; align-self: center; }
 
+button.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+/* Тільки обводка+текст червоні на hover, не заливка: фон лишається
+   білим/прозорим, як і в спокої. */
+button.danger:hover { background: var(--surface); color: var(--danger); border-color: var(--danger); transform: translateY(-1px); }
+/* "Видалити це інтервʼю" — наш звичайний секондарі-стиль (ghost), не
+   виділяється кольором у спокої; лише на ховері читається як
+   деструктивна дія. margin-left: auto ставить її по інший бік ряду
+   від "Зберегти", не в окрему картку внизу сторінки.
+   !important на color/border-color — вище за body.admin .ghost:hover
+   (сильніша специфічність), звідки інакше лишився б нейтральний колір
+   рамки замість червоного. */
+/* font-size: 17px — той самий розмір тексту, що й у "Зберегти" (успадкований
+   від body, а не 15px, які .ghost фіксує явно для решти secondary-кнопок). */
+.danger-hover { margin-left: auto; font-size: 17px; }
+/* Тільки обводка+текст червоні на hover, фон лишається білим — не
+   заливка кольором (як було раніше з color-mix у фон). */
+.danger-hover:hover:not(:disabled) {
+  background: var(--surface) !important;
+  border-color: var(--danger) !important; color: var(--danger) !important;
+}
+
+/* ── Результати ──────────────────────────────────────────────────────── */
+
+/* Одна картка зі списком рядків, розділених ПУНКТИРОМ — саме так у
+   референсній картці "Operational work items", а не N окремих карток. */
+.list-head { padding-bottom: 8px; }
+.list-rows { padding: 8px 24px 16px; }
+.list-empty { padding: 8px 0; margin: 0; font-size: 14px; }
+
+/* Дві колонки: зліва — все, що описує саме це інтервʼю (хто, коли,
+   скільки, як оцінене) одним зв'язним блоком; справа — лише дії, по
+   вертикальному центру всього рядка. Раніше дата сиділа в правому
+   куті першого рядка, а кнопка "Транскрипт" — у правому куті другого:
+   два різні праві краї, що не мали між собою нічого спільного. */
 .run {
-  display: grid; grid-template-columns: 1fr auto auto auto; gap: 14px; align-items: center;
-  padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px;
-  box-shadow: var(--shadow-sm);
-  background: var(--surface); margin-bottom: 8px; font-size: 14px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 0; border-bottom: 1px dashed var(--line);
 }
-.run .pill { font-size: 12px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--muted); }
-.run .pill.warn { color: var(--danger); border-color: var(--danger); }
-
-#transcript { margin-top: 26px; }
-.turn { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
-.turn .who { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.turn.interviewer .who { color: var(--accent); }
-input[type="range"] { padding: 0; accent-color: var(--accent); }
-input[type="checkbox"] { accent-color: var(--accent); }
-
-.masked-note { font-size: 12px; color: var(--muted); margin-top: 4px; font-style: italic; }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
-
-.incident { font-size: 13px; color: var(--danger); padding: 6px 0; }
-
-@media (max-width: 780px) {
-  .layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--line); }
-  .row { grid-template-columns: 1fr; }
+.run:last-child { border-bottom: none; padding-bottom: 8px; }
+.run-info { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.run-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.run-head strong { font-size: 15px; font-weight: 600; }
+.run-date { white-space: nowrap; }
+/* Рейтинг → репліки → дата, зліва направо, той самий gap між усіма —
+   один зв'язний рядок фактів про інтервʼю, не рознесені по картці. */
+.run-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+/* "·" — видимий розділювач між фактами, а не просто пробіл: без нього
+   рейтинг/репліки/дата читались як розкидані слова, не послідовність. */
+/* Суцільна крапка через CSS, не текстовий символ "·": гліф при
+   великому font-size сидів оптично вище за базову лінію сусіднього
+   тексту (бокси центрувались, а сам знак — ні). Фіксований розмір
+   боксу гарантовано центрується flex-ом незалежно від шрифту. */
+.run-meta-sep {
+  display: inline-block; flex: none;
+  width: 3px; height: 3px; border-radius: 50%;
+  background: var(--muted); opacity: .6;
 }
-
-
-/* ── Видалення ───────────────────────────────────────────────────────── */
-
-button.danger {
-  background: transparent; border: 1px solid var(--danger); color: var(--danger);
+.run-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+/* Статус-бейджі у двох формах із референсу: залита — для змістовного
+   статусу, контурна — для нейтрального лічильника. Іконка всередині. */
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 14px; padding: 4px 10px; border-radius: 6px;
+  font-weight: 600; line-height: 1.4;
 }
-button.danger:hover { background: var(--danger); color: var(--on-danger); }
-.delete-confirm {
-  background: var(--surface); border: 1px solid var(--danger);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  padding: 14px 16px; margin-top: 10px;
+.pill .icon { flex: none; width: 14px; height: 14px; }
+/* Фіксовані пастельні пари: світла тема — насичені кольори; темна —
+   прозорий фон з сяйвом, як на референсі. */
+.pill-good {
+  background: #dcf7e3;
+  color: #1b7a3d;
 }
-.delete-confirm .actions { flex-wrap: wrap; }
+.pill-danger {
+  background: #fbe1ec;
+  color: #a32c63;
+}
+.pill-accent {
+  background: #ede4fb;
+  color: #6b3fc4;
+}
+/* Лічильник реплік — той самий оранжевий, що й банер-підказка (--info),
+   не рожевий/блакитний, як раніше; оцінка (.pill-accent, зірочка)
+   лишається фіолетовою — то інший тип бейджа. Формула тла — та сама,
+   що й у .callout (color-mix info% у surface), лише вищий відсоток —
+   банер великий, бейдж дрібний, йому потрібен помітніший тон. */
+.pill-info {
+  background: color-mix(in srgb, var(--info) 15%, var(--surface));
+  color: color-mix(in srgb, var(--info) 65%, black);
+}
+@media (prefers-color-scheme: dark) {
+  body.admin:not([data-theme="light"]) .pill-good {
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    color: #34d399;
+  }
+  body.admin:not([data-theme="light"]) .pill-danger {
+    background: rgba(244, 114, 182, 0.12);
+    border: 1px solid rgba(244, 114, 182, 0.45);
+    color: #f472b6;
+  }
+  body.admin:not([data-theme="light"]) .pill-accent {
+    background: rgba(167, 139, 250, 0.12);
+    border: 1px solid rgba(167, 139, 250, 0.45);
+    color: #a78bfa;
+  }
+  body.admin:not([data-theme="light"]) .pill-info {
+    background: color-mix(in srgb, var(--info) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+    color: var(--info);
+  }
+}
+body.admin[data-theme="dark"] .pill-good {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #34d399;
+}
+body.admin[data-theme="dark"] .pill-danger {
+  background: rgba(244, 114, 182, 0.12);
+  border: 1px solid rgba(244, 114, 182, 0.45);
+  color: #f472b6;
+}
+body.admin[data-theme="dark"] .pill-accent {
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  color: #a78bfa;
+}
+body.admin[data-theme="dark"] .pill-info {
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info) 45%, transparent);
+  color: var(--info);
+}
+/* ── Транскрипт ──────────────────────────────────────────────────────── */
+
+.turn { padding: 16px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.turn .who { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.turn.interviewer .who { color: var(--heading); }
+/* Запис голосу — між "хто говорив" і текстом репліки. */
+.turn-voice { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.turn-voice audio { width: 100%; max-width: 420px; }
+input[type="range"] { padding: 0; accent-color: var(--accent-strong); }
+input[type="checkbox"] { accent-color: var(--accent-strong); }
+
+.masked-note { font-size: 14px; color: var(--muted); margin-top: 4px; font-style: italic; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+.incident { font-size: 14px; color: var(--danger); padding: 8px 0; }
+
+.feedback-note {
+  font-size: 14px; padding: 8px 16px; margin: 8px 0 16px;
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: var(--radius-sm);
+}
+.feedback-note .icon { width: 14px; height: 14px; vertical-align: -2px; color: var(--warn); }
 
 /* ── Кошик ───────────────────────────────────────────────────────────── */
 
-.trash-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 4px; font-size: 13px; color: var(--muted);
-}
-.trash-row span { flex: 1; }
-.trash-row button { font-size: 12px; padding: 4px 8px; }
-.purge-confirm {
-  background: var(--surface); border: 1px solid var(--danger);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
-  padding: 10px 12px; margin: 4px 0 8px;
-}
-.purge-confirm .actions { flex-wrap: wrap; margin-top: 6px; }
 
-/* Записи голосу під рядком інтервʼю. */
-.voice-clips { padding: 8px 0 14px 12px; border-left: 2px solid var(--line); margin: -6px 0 10px 6px; }
-.voice-clip { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-.voice-clip audio { width: 100%; max-width: 420px; }
+/* ── Модалки ─────────────────────────────────────────────────────────── */
+
+.modal {
+  position: fixed; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 20, 20, .55); backdrop-filter: blur(3px); padding: 24px;
+}
+.modal-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 24px 60px -12px rgba(20, 20, 20, .35);
+  padding: 24px; width: 100%; max-width: 480px;
+  max-height: 80vh; display: flex; flex-direction: column;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 16px; }
+.modal-head h2 { font-size: 16px; font-weight: 700; margin: 0; color: var(--text); letter-spacing: -.01em; }
+/* × у шапці — той самий принцип, що й .callout-close: лише іконка
+   реагує на ховер, без тла-плашки навколо. */
+.modal-close {
+  flex: none; width: 28px; height: 28px; padding: 0; display: grid; place-items: center;
+  background: transparent; border: none; border-radius: 999px; color: var(--muted); cursor: pointer;
+}
+.modal-close svg { width: 16px; height: 16px; display: block; }
+.modal-close:hover { background: transparent; color: var(--text); }
+/* Підсумкова дія модалки — праворуч знизу, окремо від контенту, що
+   може прокручуватись: той самий патерн, що .actions.sticky на сторінці. */
+.modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.modal-card-wide { max-width: 760px; }
+.modal-card-wide #transcript { overflow-y: auto; margin-top: 8px; }
+.reorder-list { overflow-y: auto; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+/* Без overflow-y: auto — той сам показував скролбар при наведенні
+   (деякі системи показують афорданс скролу на overflow:auto-контейнері
+   під курсором, навіть коли реального переповнення на пару пікселів
+   не видно у звичайному вимірі). Кошик зазвичай короткий — модалка
+   (max-height: 80vh) і так обмежує загальну висоту. */
+.trash-modal-list { margin: 8px 0 0; }
+/* Тултіп кнопок-дій — праворуч, не по центру кнопки: сама кнопка сидить
+   майже впритул до правого краю списку, і центрований тултіп виходив
+   би за цю межу (тоді overflow-y: auto вище рахував це як горизонтальний
+   переповнення й показував зайвий скрол — навіть invisible-тултіп все
+   одно рахується в scrollWidth). Прив'язка до правого краю кнопки
+   лишає тултіп повністю всередині ширини списку — без обрізання і без
+   потреби ховати overflow-x. */
+.trash-modal-list .icon-btn .tooltip {
+  left: auto; right: 0; transform: translateY(-4px);
+}
+.trash-modal-list .icon-btn:hover .tooltip, .trash-modal-list .icon-btn:focus-visible .tooltip {
+  transform: translateY(0);
+}
+.trash-modal-list .icon-btn .tooltip::before {
+  left: auto; right: 12px; margin-left: 0;
+}
+/* .run у цьому списку — кожен свій <li>, а не сусід по спільному
+   батьку: .run:last-child (межа рядка) тому спрацював би для КОЖНОГО
+   елемента однаково (завжди єдина дитина свого <li>) — межу між
+   картками рахуємо за сусідством самих <li>, як і в "Проведені
+   інтервʼю", а не за :last-child всередині .run. */
+.trash-modal-list .run { border-bottom: none; padding: 12px 0; }
+.trash-modal-list li:not(:last-child) .run { border-bottom: 1px dashed var(--line); }
+/* .space-list button (0,1,1 — для звичайних пунктів "Кошик"/переліку
+   досліджень) переважає .icon-btn (0,1,0) за специфічністю, бо ці кнопки
+   тепер вкладені саме в .space-list — інакше padding/display/border
+   "звичайного пункту списку" (той навіть явно знімає рамку,
+   border-style: none) пробивалися б крізь .icon-btn, роздуваючи кнопку
+   й ховаючи її секондарі-обводку. */
+.space-list .icon-btn { display: grid; place-items: center; width: auto; padding: 0 8px; border: 1px solid var(--line); }
+/* .space-list button .icon (фіолетовий колір іконки-папки звичайних
+   пунктів списку) так само перебивав би колір іконки в .icon-btn —
+   inherit повертає той самий "секондарі" колір, що й у самої кнопки
+   (var(--muted) в спокої, той що на hover — не задаємо його двічі). */
+.space-list .icon-btn .icon { color: inherit; }
+/* 14px — та сама мінімальна планка розміру тексту, що й скрізь в
+   інтерфейсі; .run-head strong (15px) і .run-meta (успадкований 17px
+   із контексту модалки) в цьому списку були помітно більшими за решту
+   тексту довкола них. */
+.trash-modal-list .run-head strong { font-size: 14px; }
+.trash-modal-list .run-meta { font-size: 14px; }
+/* Компактний квадрат 32×32, той самий рецепт (рамка+легка тінь), що й
+   .rail-collapse-btn — а не витягнута під висоту рядка (align-self:
+   stretch) кнопка, як за замовчуванням в .icon-btn деінде. */
+.trash-modal-list .icon-btn {
+  width: 32px; height: 32px; min-width: 32px; align-self: center;
+  padding: 0; border-radius: 5px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
+}
+.trash-modal-list .icon-btn:hover:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
+  transform: translateY(-1px);
+}
+.trash-modal-list .icon-btn:active:not(:disabled) { transform: translateY(0); }
+.reorder-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--muted-tint); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 8px 16px; cursor: grab; user-select: none;
+}
+.reorder-row.dragging { opacity: .4; }
+.reorder-handle { flex: none; color: var(--muted); font-size: 16px; line-height: 1; }
+.reorder-title { flex: 1; font-size: 14px; }
+
+/* ── Вузький екран ───────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; padding: 16px; gap: 16px; }
+  /* На вузькому екрані панель більше не притиснута до країв (стоїть
+     блоком над контентом) — повертаємо їй природну висоту й заокруглення. */
+  .rail { position: static; height: auto; border-radius: var(--radius); border-right: none; border: 1px solid var(--rail-line); }
+  .page-head-block { padding: 16px 16px 0; margin: -16px -16px 0; border-radius: var(--radius) var(--radius) 0 0; }
+  .stage-content { padding: 16px 0 96px; }
+  .row { grid-template-columns: 1fr; }
+  .page-head { flex-direction: column; }
+}

@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import tempfile
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.space import ConfigError, load_guide, load_space
@@ -175,16 +176,27 @@ def list_spaces(root: str) -> List[Dict[str, Any]]:
         space_path = os.path.join(root, name, "space.json")
         if _read_bytes(root, name, space_path) is None:
             continue
-        entry = {"key": name, "title": name, "guides": [], "error": None, "draft": False}
+        entry = {"key": name, "title": name, "guides": [], "error": None, "draft": False, "created_at": None}
         try:
             space = _load_validated_aware(root, name, space_path, load_space)
             entry["title"] = space.title
             entry["languages"] = space.languages
             entry["draft"] = space.draft
+            entry["created_at"] = space.created_at
         except (ConfigError, ValueError, OSError) as exc:
             # Зламаний простір показуємо з помилкою, а не ховаємо: інакше
             # дослідник шукатиме, куди зник його конфіг.
             entry["error"] = str(exc)
+        if not entry["created_at"]:
+            # Запасний варіант для просторів, створених до появи цього поля
+            # (або якщо файл фізично відсутній, напр. Postgres-режим — тоді
+            # лишається None, дата просто не показується).
+            try:
+                entry["created_at"] = datetime.fromtimestamp(
+                    os.path.getmtime(space_path), tz=timezone.utc
+                ).isoformat()
+            except OSError:
+                pass
         guides_dir = os.path.join(root, name, "guides")
         guide_names = set()
         if os.path.isdir(guides_dir):
@@ -221,6 +233,10 @@ def read_transcript(session_id: str) -> Dict[str, Any]:
     data = store_files.load_session_by_id(session_id)
     if data is None:
         raise AdminError("Транскрипт не знайдено", 404)
+    # Окреме сховище (save_feedback) — не частина самого транскрипту, тому
+    # для перегляду в панелі докладаємо його тут, а не в load_session_by_id.
+    data = dict(data)
+    data["feedback"] = store_files.load_feedback(session_id)
     return data
 
 
@@ -245,9 +261,115 @@ def write_guide(root: str, space_key: str, guide_key: str, data: Dict[str, Any])
     _check_key(guide_key, "гайда")
     data = dict(data or {})
     data["key"] = guide_key
+    # Поза банком кожна тема мусить мати ask_if_missed — та сама вимога,
+    # що й у load_space_dir (app/config/space.py), тут лише для repertoire
+    # свіжого зі space.json, а не з уже провалідованого SpaceConfig.
+    space_raw = _load_json_aware(root, space_key, os.path.join(space_dir, "space.json")) or {}
+    require_scripted = space_raw.get("repertoire", "free") != "bank"
+    validator = lambda path: load_guide(path, require_scripted=require_scripted)
     _write_validated(root, space_key, os.path.join(guides_dir, "%s.json" % guide_key),
-                      data, load_guide)
+                      data, validator)
     return {"ok": True, "space": space_key, "guide": guide_key}
+
+
+# ── аудіо питань (дослідник записує питання власним голосом) ──────────────
+#
+# НЕ той банк реплік, що в app/config/phrases.py: цей — окремо на кожне
+# питання гайда (topic_id), пишеться через _read_bytes/_write_bytes (як і
+# guide.json), тому працює однаково локально й на Vercel. Попередня версія
+# цієї фічі писала аудіо напряму на диск в обхід цих функцій — на Vercel це
+# ламалось (файлова система там незмінна під час роботи), тому й прибрали.
+
+_AUDIO_EXT_BY_MIME = {
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mp4": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/mpeg": ".mp3",
+}
+_AUDIO_MIME_BY_EXT = {
+    ".webm": "audio/webm", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+    ".wav": "audio/wav", ".mp3": "audio/mpeg",
+}
+
+
+def _topic_audio_path(root: str, space_key: str, guide_key: str, topic_id: str, ext: str) -> str:
+    return os.path.join(root, space_key, "audio", guide_key, topic_id + ext)
+
+
+def save_topic_audio(root: str, space_key: str, guide_key: str, topic_id: str,
+                      content_type: str, data: bytes) -> Dict[str, Any]:
+    _space_dir(root, space_key)
+    _check_key(guide_key, "гайда")
+    _check_key(topic_id, "теми")
+    mime = (content_type or "").split(";")[0].strip().lower()
+    ext = _AUDIO_EXT_BY_MIME.get(mime)
+    if not ext:
+        raise AdminError("Непідтримуваний формат запису: %s" % (content_type or "?"), 400)
+    if not data:
+        raise AdminError("Порожній запис", 400)
+    # Прибираємо попередній файл з іншим розширенням — переזапис міг
+    # трапитись іншим браузером/форматом мікрофона.
+    for other_ext in _AUDIO_MIME_BY_EXT:
+        if other_ext == ext:
+            continue
+        old_path = _topic_audio_path(root, space_key, guide_key, topic_id, other_ext)
+        if _on_postgres():
+            store_db.delete_config_override(space_key, _rel_path(root, space_key, old_path))
+        elif os.path.isfile(old_path):
+            os.remove(old_path)
+    path = _topic_audio_path(root, space_key, guide_key, topic_id, ext)
+    _write_bytes(root, space_key, path, data)
+    return {"ok": True}
+
+
+def read_topic_audio(root: str, space_key: str, guide_key: str,
+                      topic_id: str) -> Optional[Tuple[bytes, str]]:
+    """(байти, mime) або None, якщо для цього питання ще нема запису."""
+    _check_key(space_key, "інтервʼю")
+    _check_key(guide_key, "гайда")
+    _check_key(topic_id, "теми")
+    for ext, mime in _AUDIO_MIME_BY_EXT.items():
+        path = _topic_audio_path(root, space_key, guide_key, topic_id, ext)
+        content = _read_bytes(root, space_key, path)
+        if content is not None:
+            return content, mime
+    return None
+
+
+def topic_audio_exists(root: str, space_key: str, guide_key: str, topic_id: str) -> bool:
+    """Легша перевірка для гарячого шляху інтервʼю (/api/step на кожен крок) —
+    локально без читання самих байтів; на Postgres той самий _read_bytes,
+    бо там і так одна вибірка рядка."""
+    _check_key(space_key, "інтервʼю")
+    _check_key(guide_key, "гайда")
+    _check_key(topic_id, "теми")
+    for ext in _AUDIO_MIME_BY_EXT:
+        path = _topic_audio_path(root, space_key, guide_key, topic_id, ext)
+        if _on_postgres():
+            if store_db.get_config_override(space_key, _rel_path(root, space_key, path)) is not None:
+                return True
+        elif os.path.isfile(path):
+            return True
+    return False
+
+
+def delete_topic_audio(root: str, space_key: str, guide_key: str, topic_id: str) -> Dict[str, Any]:
+    _check_key(guide_key, "гайда")
+    _check_key(topic_id, "теми")
+    removed = False
+    for ext in _AUDIO_MIME_BY_EXT:
+        path = _topic_audio_path(root, space_key, guide_key, topic_id, ext)
+        if _on_postgres():
+            if store_db.get_config_override(space_key, _rel_path(root, space_key, path)) is not None:
+                store_db.delete_config_override(space_key, _rel_path(root, space_key, path))
+                removed = True
+        elif os.path.isfile(path):
+            os.remove(path)
+            removed = True
+    return {"ok": True, "removed": removed}
 
 
 def create_space(root: str, space_key: str, title: str, template: str = "example") -> Dict[str, Any]:
@@ -286,16 +408,16 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     data["key"] = space_key
     data["title"] = title
     data["draft"] = True
+    # Проставляється лише тут, один раз при створенні — на відміну від
+    # mtime файлу, не зсувається при подальших редагуваннях через адмінку.
+    data["created_at"] = datetime.now(timezone.utc).isoformat()
     data.pop("_comment", None)
     data["persona"] = dict(data.get("persona") or {})
     data["persona"]["self_intro"] = "TODO: як інтервʼюер представляється респонденту"
-    data["domain_vocabulary"] = []
     privacy = dict(data.get("privacy") or {})
-    privacy["never_ask_about"] = []
     privacy["deidentify"] = False
     privacy["consent_text"] = "TODO: текст згоди"
     data["privacy"] = privacy
-    data["report_sections"] = []
     branding = dict(data.get("branding") or {})
     branding["page_title"] = title
     data["branding"] = branding
@@ -321,8 +443,10 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
             "title": "TODO: назва теми",
             "must_learn": ["TODO: що треба зʼясувати"],
             "max_probes": 4,
+            "ask_if_missed": "TODO: питання, якщо тему взагалі не згадали",
         }]
-        _write_validated(root, space_key, path, guide, load_guide)
+        validator = lambda p: load_guide(p, require_scripted=True)
+        _write_validated(root, space_key, path, guide, validator)
 
 
 # ── кошик ────────────────────────────────────────────────────────────────
@@ -453,4 +577,7 @@ def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any
         if path == "/api/admin/trash/purge":
             return 200, purge_space(root, payload.get("space", ""),
                                     bool(payload.get("delete_sessions")))
+        if path == "/api/admin/topic-audio/delete":
+            return 200, delete_topic_audio(root, payload.get("space", ""),
+                                           payload.get("guide", ""), payload.get("topic", ""))
     raise AdminError("not found", 404)

@@ -132,16 +132,14 @@ class TestApi(unittest.TestCase):
         status, data = get(self.base, "/api/space")
         self.assertEqual(status, 200)
         self.assertIn(data["interface"]["mode"], ("voice", "text"))
-        # Клієнту потрібні лише параметри звучання.
-        for key in data.get("tts", {}):
-            self.assertIn(key, ("voice", "rate", "pitch", "gap"))
+        self.assertIn("stt", data["voice"])
 
     def test_provider_credentials_never_reach_client(self):
         """Якщо в конфіг простору колись покладуть ключ провайдера — він не має
-        поїхати в браузер разом із налаштуваннями голосу."""
-        original = self.space.providers.get("tts")
-        self.space.providers["tts"] = {
-            "provider": "browser", "voice": "Леся", "rate": 1.0,
+        поїхати в браузер, лише назва провайдера."""
+        original = self.space.providers.get("stt")
+        self.space.providers["stt"] = {
+            "provider": "browser",
             "api_key": "sk-НЕ-МАЄ-ВИТЕКТИ", "region": "eu-west",
         }
         try:
@@ -150,12 +148,12 @@ class TestApi(unittest.TestCase):
             self.assertNotIn("НЕ-МАЄ-ВИТЕКТИ", blob)
             self.assertNotIn("api_key", blob)
             self.assertNotIn("region", blob)
-            self.assertEqual(data["tts"]["voice"], "Леся")
+            self.assertEqual(data["voice"]["stt"], "browser")
         finally:
             if original is None:
-                self.space.providers.pop("tts", None)
+                self.space.providers.pop("stt", None)
             else:
-                self.space.providers["tts"] = original
+                self.space.providers["stt"] = original
 
     def test_payload_reports_autoplay(self):
         """Клієнт мусить знати, чи вмикати голос сам — і за замовчуванням ні."""
@@ -170,14 +168,14 @@ class TestApi(unittest.TestCase):
         self.assertGreaterEqual(data["interface"]["expected_words"], 1)
 
     def test_start_returns_opening(self):
-        status, data = post(self.base, "/api/start", {})
+        status, data = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         self.assertEqual(status, 200)
         self.assertTrue(data["session_id"])
         self.assertIn(self.guide.opening[:20], data["utterance"])
         self.assertFalse(data["done"])
 
     def test_empty_answer_rejected(self):
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         status, data = post(self.base, "/api/answer", {"session_id": started["session_id"], "text": "   "})
         self.assertEqual(status, 400)
         self.assertIn("error", data)
@@ -187,25 +185,23 @@ class TestApi(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_full_interview_completes_and_saves(self):
-        _, started = post(self.base, "/api/start", {})
+        """Сценарій веде людина: завершення — окрема дія (`/api/finish`), а не
+        наслідок N-ї відповіді (як було б у вільному режимі)."""
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
-        done = False
-        for _ in range(40):
-            status, data = post(self.base, "/api/answer", {"session_id": sid, "text": "якась відповідь"})
-            self.assertEqual(status, 200)
-            if data["done"]:
-                done = True
-                self.assertIn("saved_to", data)
-                self.assertTrue(os.path.exists(data["saved_to"]))
-                saved = json.load(open(data["saved_to"], encoding="utf-8"))
-                self.assertEqual(saved["prompt_version"], "interviewer.v1")
-                self.assertTrue(saved["completed"])
-                break
-        self.assertTrue(done, "інтервʼю не завершилось за 40 реплік")
+        post(self.base, "/api/answer", {"session_id": sid, "text": "якась відповідь"})
+        status, data = post(self.base, "/api/finish", {"session_id": sid})
+        self.assertEqual(status, 200)
+        self.assertTrue(data["done"])
+        self.assertIn("saved_to", data)
+        self.assertTrue(os.path.exists(data["saved_to"]))
+        saved = json.load(open(data["saved_to"], encoding="utf-8"))
+        self.assertEqual(saved["prompt_version"], "interviewer.v1")
+        self.assertTrue(saved["completed"])
 
     def test_draft_returns_checklist_without_touching_transcript(self):
         """Жива перевірка не пише в транскрипт: це чернетка, не відповідь."""
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
         live = os.path.join(store_files.LIVE_DIR, "%s.json" % sid)
         before = json.load(open(live, encoding="utf-8"))["turns"]
@@ -219,7 +215,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(len(before), len(after))
 
     def test_draft_reset_accepted(self):
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
         status, data = post(self.base, "/api/draft", {"session_id": sid, "reset": True})
         self.assertEqual(status, 200)
@@ -229,28 +225,17 @@ class TestApi(unittest.TestCase):
         status, _ = post(self.base, "/api/draft", {"session_id": "нема", "text": "щось"})
         self.assertEqual(status, 404)
 
-    def test_answer_payload_says_whether_everything_covered(self):
-        """Клієнт вмикає «Надіслати» саме за цим полем."""
-        _, started = post(self.base, "/api/start", {})
-        sid = started["session_id"]
-        _, data = post(self.base, "/api/answer",
-                       {"session_id": sid, "text": "перша відповідь"})
-        self.assertIn("all_covered", data)
-        self.assertIsInstance(data["all_covered"], bool)
-
     def test_answering_finished_session_rejected(self):
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
-        for _ in range(40):
-            _, data = post(self.base, "/api/answer", {"session_id": sid, "text": "відповідь"})
-            if data.get("done"):
-                break
+        post(self.base, "/api/answer", {"session_id": sid, "text": "відповідь"})
+        post(self.base, "/api/finish", {"session_id": sid})
         # Сесія завершена й прибрана зі стора — далі 404, а не тихе продовження.
         status, _ = post(self.base, "/api/answer", {"session_id": sid, "text": "ще одна"})
         self.assertIn(status, (404, 409))
 
     def test_live_state_written_after_each_turn(self):
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
         live = os.path.join(store_files.LIVE_DIR, "%s.json" % sid)
         self.assertTrue(os.path.exists(live), "стан не збережено одразу після старту")
@@ -259,17 +244,19 @@ class TestApi(unittest.TestCase):
         self.assertTrue(any(x["role"] == "respondent" for x in saved["turns"]))
 
     def test_resume_returns_last_question(self):
-        _, started = post(self.base, "/api/start", {})
+        """Сценарний режим: відповідь не рухає питання — resume мусить
+        показати те саме питання, на яке щойно відповіли."""
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
-        _, answered = post(self.base, "/api/answer", {"session_id": sid, "text": "щось сказав"})
+        post(self.base, "/api/answer", {"session_id": sid, "text": "щось сказав"})
         status, resumed = post(self.base, "/api/resume", {"session_id": sid})
         self.assertEqual(status, 200)
-        self.assertEqual(resumed["utterance"], answered["utterance"])
+        self.assertEqual(resumed["utterance"], started["utterance"])
         self.assertEqual(resumed["answered"], 1)
 
     def test_resume_survives_server_restart(self):
         """Головне, що закриває TD-5: нова памʼять, той самий стан із диска."""
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
         post(self.base, "/api/answer", {"session_id": sid, "text": "відповідь до перезапуску"})
 
@@ -296,12 +283,10 @@ class TestApi(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_finished_session_drops_live_state(self):
-        _, started = post(self.base, "/api/start", {})
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]
-        for _ in range(40):
-            _, data = post(self.base, "/api/answer", {"session_id": sid, "text": "відповідь"})
-            if data.get("done"):
-                break
+        post(self.base, "/api/answer", {"session_id": sid, "text": "відповідь"})
+        post(self.base, "/api/finish", {"session_id": sid})
         self.assertFalse(os.path.exists(os.path.join(store_files.LIVE_DIR, "%s.json" % sid)),
                          "живий стан не прибрано після завершення")
         self.assertTrue(os.path.exists(os.path.join(store_files.DEFAULT_DIR, "%s.json" % sid)))
@@ -322,6 +307,82 @@ class TestApi(unittest.TestCase):
             self.assertNotIn("ANTHROPIC", body)
         except urllib.error.HTTPError as exc:
             self.assertEqual(exc.code, 404)
+
+
+class TestFeedback(unittest.TestCase):
+    """Відгук про сам досвід — окремо від транскрипту (той пишеться один
+    раз, і "/api/finish" уже його закрив до того, як людина бачить форму)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.space, cls.guide = load_space_dir(EXAMPLE)
+        cls.space.repertoire = "free"
+        cls._orig_dirs = (store_files.DEFAULT_DIR, store_files.LIVE_DIR, store_files.FEEDBACK_DIR)
+        cls._root = tempfile.mkdtemp()
+        store_files.DEFAULT_DIR = os.path.join(cls._root, "sessions")
+        store_files.LIVE_DIR = os.path.join(cls._root, "live")
+        store_files.FEEDBACK_DIR = os.path.join(cls._root, "feedback")
+        cls.httpd = serve(cls.space, cls.guide, {"provider": "mock"}, port=0)
+        cls.base = "http://127.0.0.1:%d" % cls.httpd.server_address[1]
+        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        store_files.DEFAULT_DIR, store_files.LIVE_DIR, store_files.FEEDBACK_DIR = cls._orig_dirs
+        cls.httpd.shutdown()
+        cls.httpd.server_close()
+        shutil.rmtree(cls._root, ignore_errors=True)
+
+    def _finished_session(self):
+        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
+        sid = started["session_id"]
+        post(self.base, "/api/answer", {"session_id": sid, "text": "відповідь"})
+        post(self.base, "/api/finish", {"session_id": sid})
+        return sid
+
+    def test_rating_and_comment_saved_after_finish(self):
+        sid = self._finished_session()
+        status, data = post(self.base, "/api/feedback",
+                            {"session_id": sid, "rating": 4, "comment": "Було зручно."})
+        self.assertEqual(status, 200, data)
+        saved = store_files.load_feedback(sid)
+        self.assertEqual(saved["rating"], 4)
+        self.assertEqual(saved["comment"], "Було зручно.")
+
+    def test_rating_alone_is_enough(self):
+        sid = self._finished_session()
+        status, _ = post(self.base, "/api/feedback", {"session_id": sid, "rating": 5})
+        self.assertEqual(status, 200)
+
+    def test_comment_alone_is_enough(self):
+        sid = self._finished_session()
+        status, _ = post(self.base, "/api/feedback",
+                         {"session_id": sid, "comment": "Дякую, все чітко."})
+        self.assertEqual(status, 200)
+
+    def test_empty_feedback_rejected(self):
+        sid = self._finished_session()
+        status, _ = post(self.base, "/api/feedback", {"session_id": sid})
+        self.assertEqual(status, 400)
+
+    def test_rating_out_of_range_rejected(self):
+        sid = self._finished_session()
+        status, _ = post(self.base, "/api/feedback", {"session_id": sid, "rating": 11})
+        self.assertEqual(status, 400)
+
+    def test_unknown_session_rejected(self):
+        status, _ = post(self.base, "/api/feedback", {"session_id": "невідома", "rating": 3})
+        self.assertEqual(status, 404)
+
+    def test_feedback_surfaces_in_sessions_listing(self):
+        """Дослідник має бачити оцінку в переліку, не відкриваючи транскрипт."""
+        sid = self._finished_session()
+        post(self.base, "/api/feedback", {"session_id": sid, "rating": 2, "comment": "Довго."})
+        status, data = get(self.base, "/api/sessions")
+        self.assertEqual(status, 200)
+        item = next(i for i in data["items"] if i["session_id"] == sid)
+        self.assertEqual(item["feedback"]["rating"], 2)
 
 
 if __name__ == "__main__":

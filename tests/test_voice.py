@@ -138,7 +138,7 @@ class TestVoiceApiNeedsConsent(unittest.TestCase):
         shutil.rmtree(cls._root, ignore_errors=True)
 
     def _start(self, consent):
-        _, data = post_json(self.base, "/api/start", {"record_voice": consent})
+        _, data = post_json(self.base, "/api/start", {"record_voice": consent, "respondent_name": "Тестова Особа"})
         return data["session_id"], data
 
     def test_without_consent_upload_is_refused(self):
@@ -268,7 +268,7 @@ class TestVoiceOffBySpace(unittest.TestCase):
         shutil.rmtree(cls._root, ignore_errors=True)
 
     def test_default_is_no_recording(self):
-        _, space = post_json(self.base, "/api/start", {"record_voice": True})
+        _, space = post_json(self.base, "/api/start", {"record_voice": True, "respondent_name": "Тестова Особа"})
         self.assertFalse(space["voice_consent"],
                          "простір запису не просив — згоди не може бути")
         status, body = post_bytes(

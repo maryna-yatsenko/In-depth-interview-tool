@@ -142,19 +142,41 @@ def pick(phrase_id, action="probe"):
 class TestSessionBankMode(unittest.TestCase):
     """Власна фікстура, а не `spaces/example`.
 
-    Приклад свідомо лишається у вільному режимі й БЕЗ записів: фальшиві
-    «записи» в шаблоні — та сама пастка, що велосипеди в новому просторі.
-    Тому тут банк збирається в тимчасовій теці з підробленим аудіо.
+    `example` тепер сценарний гайд (ask_if_missed на кожній темі) — той самий
+    референс, що й `travel`, тому для нього `self.script` непорожній і банк
+    би просто не спрацював (`answer()`/`start()` перевіряють сценарій раніше
+    за банк). Банку потрібен простір, де жодна тема не має дослівного
+    питання, — тому тут мінімальний простір/гайд будується прямо в тесті,
+    а банк — у тимчасовій теці з підробленим аудіо.
     """
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.dir = os.path.join(self.tmp, "example")
-        shutil.copytree(EXAMPLE, self.dir)
+        self.dir = os.path.join(self.tmp, "bank-space")
+        os.makedirs(os.path.join(self.dir, "guides"))
+        with open(os.path.join(self.dir, "space.json"), "w", encoding="utf-8") as fh:
+            json.dump({
+                "key": "bank-space",
+                "title": "Тестовий простір банку",
+                "languages": ["uk"],
+                "persona": {"self_intro": "Добрий день."},
+                "repertoire": "bank",
+            }, fh, ensure_ascii=False)
+        with open(os.path.join(self.dir, "guides", "main.json"), "w", encoding="utf-8") as fh:
+            json.dump({
+                "key": "main",
+                "goal": "Перевірити режим банку",
+                "max_turns": 40,
+                "topics": [
+                    {"id": "t1", "title": "Перша тема"},
+                    {"id": "t2", "title": "Друга тема"},
+                ],
+            }, fh, ensure_ascii=False)
         self.space, self.guide = load_space_dir(self.dir)
 
-        phrases = json.loads(
-            open(os.path.join(self.dir, "phrases.json"), encoding="utf-8").read())["phrases"]
+        with open(os.path.join(ROOT, "spaces", "example", "phrases.json"),
+                 encoding="utf-8") as fh:
+            phrases = json.load(fh)["phrases"]
         audio = []
         for phrase in phrases:
             phrase["audio"] = phrase["id"] + ".wav"

@@ -46,7 +46,7 @@ class TestConfig(unittest.TestCase):
             p = write(tmp, "space.json", {
                 "key": "x", "title": "X", "languages": ["uk"],
                 "persona": {"self_intro": "привіт"},
-                "privacy": {"deidentify": True, "never_ask_about": []},
+                "privacy": {"deidentify": True, "use_builtin_patterns": False, "patterns": []},
             })
             with self.assertRaises(ConfigError):
                 load_space(p)

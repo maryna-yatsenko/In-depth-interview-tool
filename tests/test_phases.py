@@ -1,8 +1,8 @@
 """Сценарій гайда: розігрів → вільна розповідь → карта тем → підсумок.
 
 Це найважливіший рушій інструменту: він веде інтервʼю дослівними формулюваннями
-дослідника, а модель викликає лише там, де потрібне вільне уточнення. Тому
-тестується без моделі взагалі.
+дослідника, модель не формулює жодного питання. Тому тестується без моделі
+взагалі.
 """
 
 import os
@@ -16,14 +16,6 @@ from app.interview import phases
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAVEL = os.path.join(ROOT, "spaces", "travel")
-
-
-def free_mode(guide):
-    """Гайд без питань по темах — вільний режим, де питання формулює модель."""
-    for topic in guide.topics:
-        topic.ask_if_missed = ""
-        topic.ask_for_detail = ""
-    return guide
 
 
 def guide(**kwargs):
@@ -155,21 +147,6 @@ class TestFlow(unittest.TestCase):
         self.assertEqual(action.label, "topic-level2")
         self.assertEqual(action.kind, phases.FIXED)
 
-    def test_probe_only_after_both_levels_used(self):
-        """Вільне уточнення можливе лише коли обидва рівні вже вжиті І ліміт
-        питань у темі це дозволяє. При max_probes=2 обидва рівні його вичерпують,
-        і тема закривається без моделі — саме цього гайд і хоче."""
-        wide = guide()
-        wide.topics[0].max_probes = 3
-        plan = phases.Plan(wide, coverage_detector=lambda t, x: [])
-        state = phases.PhaseState()
-        plan.next_action(state, "коротко", "")
-        plan.next_action(state, "Та все.", "")
-        plan.next_action(state, "Та все, більше нічого.", "")   # рівень 1
-        plan.next_action(state, "Конкретна відповідь.", "")     # рівень 2
-        action = plan.next_action(state, "Ще одна конкретна відповідь.", "")
-        self.assertEqual(action.kind, phases.PROBE)
-
     def test_two_levels_close_the_topic_when_limit_is_two(self):
         self.reach_topics()                                     # t1 рівень 1
         self.step("Конкретна відповідь.")                       # t1 рівень 2
@@ -177,20 +154,16 @@ class TestFlow(unittest.TestCase):
         self.assertEqual(action.label, "topic-level1", "не перейшли до наступної теми")
         self.assertEqual(action.text, "Друге рівня один?")
 
-    def test_guide_texts_outnumber_model_probes(self):
-        """Головна властивість режиму: інтервʼю веде гайд, не модель."""
+    def test_guide_texts_are_the_only_source_of_questions(self):
+        """Головна властивість режиму: інтервʼю веде гайд, а модель нічого
+        не формулює — кожна дія або дослівний текст, або службова (HOLD/WRAP_UP)."""
         plan = phases.Plan(self.guide, coverage_detector=lambda t, x: [])
         state = phases.PhaseState()
-        fixed = probes = 0
         for _ in range(60):
             action = plan.next_action(state, "Конкретна відповідь без узагальнень.", "текст")
             if action.kind == phases.WRAP_UP:
                 break
-            if action.kind == phases.FIXED:
-                fixed += 1
-            else:
-                probes += 1
-        self.assertGreater(fixed, probes)
+            self.assertIn(action.kind, (phases.FIXED, phases.HOLD))
 
     def test_topic_advances_after_probe_limit(self):
         self.reach_topics()                         # t1 питання 1
@@ -296,13 +269,11 @@ class TestGapDriven(unittest.TestCase):
     def test_open_items_lists_unclosed(self):
         topic = self.guide.topics[0]
         self.assertEqual(phases.open_items(topic, self.state), [0])
-        self.assertEqual(phases.focus_item(topic, self.state), "щось перше")
 
-    def test_closed_item_removes_it_from_focus(self):
+    def test_closed_item_removes_it_from_open(self):
         topic = self.guide.topics[0]
         self.state.topic_items_done[topic.id] = [0]
         self.assertEqual(phases.open_items(topic, self.state), [])
-        self.assertEqual(phases.focus_item(topic, self.state), "")
 
     def test_topic_closes_early_when_items_done(self):
         """Витрачати ходи на закриту тему означало б забрати їх у наступної."""
@@ -312,73 +283,10 @@ class TestGapDriven(unittest.TestCase):
         self.assertEqual(action.label, "topic-level1")
         self.assertEqual(action.text, "Друге рівня один?")
 
-    def test_probe_carries_the_focus_gap(self):
-        wide = guide()
-        wide.topics[0].max_probes = 4
-        plan = phases.Plan(wide, coverage_detector=lambda t, x: [])
-        state = phases.PhaseState()
-        plan.next_action(state, "коротко", "")
-        plan.next_action(state, "Та все.", "")
-        plan.next_action(state, "Та все, більше нічого.", "")   # рівень 1
-        plan.next_action(state, "Конкретна відповідь.", "")     # рівень 2
-        action = plan.next_action(state, "Конкретна відповідь.", "")
-        self.assertEqual(action.kind, phases.PROBE)
-        self.assertEqual(action.focus, "щось перше")
-
     def test_items_state_survives_round_trip(self):
         self.state.topic_items_done["t1"] = [0]
         restored = phases.PhaseState.from_dict(self.state.to_dict())
         self.assertEqual(restored.topic_items_done["t1"], [0])
-
-
-class TestHoldProducesNoTurn(unittest.TestCase):
-    """Мовчання не має потрапляти в транскрипт порожнім ходом."""
-
-    def setUp(self):
-        from app.config.space import load_space_dir
-        from app.interview.session import Session
-        from app.providers.base import LLMProvider
-
-        class Quiet(LLMProvider):
-            name = "quiet"
-            supports_structured = False
-
-            def respond_text(self, system, messages):
-                if "Відповідай ОДНИМ словом" in (messages[-1]["content"] if messages else ""):
-                    return "ні"
-                return "А що саме сталося?"
-
-        self.space, self.guide = load_space_dir(TRAVEL)
-        # Тримання розповіді — механіка вільного режиму: у сценарному темп
-        # задає людина, і мовчання інтервʼюера там не існує.
-        free_mode(self.guide)
-        self.session = Session(self.space, self.guide, Quiet())
-
-    def _pass_warmup(self, session):
-        """Розігрів може доперепитати прогалину — проходимо його до кінця."""
-        for _ in range(6):
-            if session.phase_state.phase != phases.WARMUP:
-                return
-            session.answer("Їздили в Карпати, шість людей.")
-
-    def test_hold_turn_is_empty_and_not_recorded(self):
-        self.session.start()
-        self._pass_warmup(self.session)                            # → narrative prompt
-        before = len(self.session.turns)
-        turn = self.session.answer("Довга розповідь про те, як усе починалось і що було далі.")
-        self.assertEqual(turn.action, "hold")
-        self.assertEqual(turn.utterance, "")
-        # Додався лише хід респондента, репліки інтервʼюера немає.
-        self.assertEqual(len(self.session.turns), before + 1)
-        self.assertEqual(self.session.turns[-1]["role"], "respondent")
-
-    def test_no_empty_interviewer_turns_in_transcript(self):
-        self.session.start()
-        for answer in ["Їздили в Карпати.", "Розповідь про підготовку і житло.",
-                       "Ще деталі про квитки й бюджет."]:
-            self.session.answer(answer)
-        for turn in self.session.to_dict()["turns"]:
-            self.assertTrue(turn["text"].strip(), "порожній хід у транскрипті")
 
 
 class TestProgress(unittest.TestCase):
@@ -464,49 +372,3 @@ class TestProgress(unittest.TestCase):
         seen.append(self.plan.progress(state, 9)["fraction"])
         self.assertEqual(seen, sorted(seen), "частка мусить лише зростати")
 
-    def test_finish_narrative_jumps_to_topics(self):
-        from app.config.space import load_space_dir
-        from app.interview.session import Session
-        from app.providers.base import LLMProvider
-
-        class Quiet(LLMProvider):
-            name = "quiet"
-            supports_structured = False
-
-            def respond_text(self, system, messages):
-                return "ні"
-
-        space, real_guide = load_space_dir(TRAVEL)
-        free_mode(real_guide)
-        session = Session(space, real_guide, Quiet())
-        session.start()
-        for _ in range(6):
-            if session.phase_state.phase != phases.WARMUP:
-                break
-            session.answer("Їздили в Карпати.")                   # → narrative
-        self.assertEqual(session.phase_state.phase, phases.NARRATIVE)
-        session.answer("Коротка розповідь.", finish_narrative=True)
-        self.assertEqual(session.phase_state.phase, phases.TOPICS)
-
-    def test_finish_narrative_ignored_outside_narrative(self):
-        from app.config.space import load_space_dir
-        from app.interview.session import Session
-        from app.providers.base import LLMProvider
-
-        class Quiet(LLMProvider):
-            name = "quiet"
-            supports_structured = False
-
-            def respond_text(self, system, messages):
-                return "ні"
-
-        space, real_guide = load_space_dir(TRAVEL)
-        free_mode(real_guide)
-        session = Session(space, real_guide, Quiet())
-        session.start()
-        session.answer("Їздили в Карпати.", finish_narrative=True)
-        # Розповідь ще не починалась — прапорець не має нічого зламати. Фаза
-        # лишається розігрівом, бо він доперепитує прогалину: оцінювач-заглушка
-        # не зарахував нічого. Головне — що прапорець не перескочив фазу.
-        self.assertEqual(session.phase_state.phase, phases.WARMUP)
-        self.assertEqual(session.phase_state.narrative_count, 0)

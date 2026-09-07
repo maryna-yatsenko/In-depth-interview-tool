@@ -16,14 +16,16 @@ Voice-based інтерв'юер для якісних досліджень: LLM 
   піднімає `ThreadingHTTPServer` (запускається через `local/start.command`/
   `local/stop.command`, які треба запускати з кореня проєкту), `cli.py` —
   текстовий термінальний канал для швидкої перевірки якості інтерв'ю без
-  голосу. Обидва працюють з диском (`local/data/`) і локальними моделями
-  (`local/models/`: mlx для LLM, espnet/piper для TTS).
+  голосу. Обидва працюють з диском (`local/data/`) і локальною моделлю
+  (`local/models/`: mlx для LLM). Питання респондент чує живим голосом
+  дослідника (запис у панелі), а не синтезом — TTS-провайдерів у проєкті
+  немає.
 - **`api/index.py`** — Vercel serverless entrypoint (задеплоєна версія).
   Той самий `Handler` з `app/api/server.py`, але сховище — Postgres
-  (`STORAGE_BACKEND=postgres`, `app/storage/db.py`), а провайдери LLM/TTS
-  підмінюються env-змінними `LLM_PROVIDER_OVERRIDE`/
-  `TTS_PROVIDER_OVERRIDE` (`app/providers/registry.py`) — на Vercel
-  локальні моделі фізично не запускаються.
+  (`STORAGE_BACKEND=postgres`, `app/storage/db.py`), а провайдер LLM
+  підмінюється env-змінною `LLM_PROVIDER_OVERRIDE`
+  (`app/providers/registry.py`) — на Vercel локальна модель фізично не
+  запускається.
 
 Обидва входи ділять один і той самий `app/` без жодних відгалужень —
 зміна там впливає одразу на локальну розробку і на деплой.
@@ -34,8 +36,8 @@ Voice-based інтерв'юер для якісних досліджень: LLM 
 |---|---|
 | `app/api/` | HTTP-обробник (`server.py`) і бекенд адмінки (`admin.py`) |
 | `app/config/` | Завантаження `.env`, схема/валідація `space.json`/гайдів (`space.py`), резолв конфігів для Vercel (`resolve.py`), банк реплік (`phrases.py`) |
-| `app/interview/` | Ядро інтерв'ю: машина станів і фази (`session.py`, `phases.py`), guard проти небажаних реплік, LLM-суддя чеклиста (`judge.py`), деідентифікація PII, збірка промпту, `prompts/*.md` |
-| `app/providers/` | По одному файлу на LLM/TTS-провайдера (mlx, anthropic, mock, espnet, piper, azure, say) + `registry.py`, який будує потрібний за конфігом/env |
+| `app/interview/` | Ядро інтерв'ю: машина станів і фази (`session.py`, `phases.py`), LLM-суддя чеклиста (`judge.py`), деідентифікація PII, збірка промпту для банку (`prompt_builder.py`, `prompts/interviewer.v1.md`) |
+| `app/providers/` | По одному файлу на LLM-провайдера (mlx, anthropic, mock) + `registry.py`, який будує потрібний за конфігом/env |
 | `app/storage/` | Диск (`local.py`), Postgres (`db.py`), голосові записи (`voice.py`) — однакові сигнатури для обох бекендів |
 | `web/` | Статика: сторінка респондента (`index.html`, `app.js`, `audio.js`, `segments.js`, `styles.css`) і панель дослідника (`admin.html`, `admin.js`, `admin.css`) |
 | `public/` | Симлінки на файли з `web/` для статичної роздачі на Vercel |
@@ -43,7 +45,7 @@ Voice-based інтерв'юер для якісних досліджень: LLM 
 | `docs/ai/` | Живі документи: план архітектури, продуктовий контекст, задачі, каталог едж-кейсів, технічний борг |
 | `tests/` | Юніт-тести (`python3 -m unittest discover -s tests -q`) |
 | `api/index.py`, `vercel.json`, `.vercelignore`, `requirements.txt` | Vercel-деплой |
-| `local/` | Усе, що потрібне лише локальній розробці — і нічого з цього не входить у Vercel-бандл (`.vercelignore`): `serve.py`, `cli.py`, `start.command`, `stop.command`, `requirements-local.txt`; `bin/` — espnet-воркер (`espnet_worker.py`), офлайн-оцінка LLM-судді (`judge_eval.py`), прогін сценарію без веб-інтерфейсу (`run_interview.py`); `models/`, `data/` — локальні моделі й транскрипти, гітигноряться повністю, існують лише на диску розробника. `start.command`/`stop.command` самі переходять у корінь проєкту (`cd ..`) — запускати можна з будь-якого місця |
+| `local/` | Усе, що потрібне лише локальній розробці — і нічого з цього не входить у Vercel-бандл (`.vercelignore`): `serve.py`, `cli.py`, `start.command`, `stop.command`; `bin/` — офлайн-оцінка LLM-судді (`judge_eval.py`), прогін сценарію без веб-інтерфейсу (`run_interview.py`); `models/`, `data/` — локальні моделі й транскрипти, гітигноряться повністю, існують лише на диску розробника. `start.command`/`stop.command` самі переходять у корінь проєкту (`cd ..`) — запускати можна з будь-якого місця |
 
 ## Критерій: що лишається в репозиторії
 

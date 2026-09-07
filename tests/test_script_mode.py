@@ -209,35 +209,33 @@ class Structured(Counting):
 
 
 class TestResumeAcrossProviders(unittest.TestCase):
-    """Головна знахідка: /api/resume не працював ЖОДНОГО РАЗУ для локальної
-    моделі (MLX), бо перевірка звіряла збережену версію промпту з фіксованим
-    DEFAULT_PROMPT_VERSION замість тієї, яку дає поточний провайдер. MLX не
-    структурований → отримує `interviewer.compact` → ніколи не збігався з
-    жорстко зашитим `interviewer.v1` → resume падав з ValueError щоразу, коли
-    сесія не лишалась у памʼяті процесу (тобто після кожного перезапуску
-    сервера — саме те, заради чого існує TD-5).
-    """
+    """`prompt_version` більше не залежить від можливостей провайдера (не було
+    сенсу в скороченому промпті під слабку модель, коли модель нічого не
+    формулює) — тому відновлення сесії тепер працює для БУДЬ-якого провайдера.
+    Захист лишається на випадок, коли версію промпту дійсно змінили (тоді
+    стару сесію свідомо не дозбирають — див. TD-5 про причину цієї перевірки)."""
 
     def setUp(self):
         self.space, self.guide = load_space_dir(TRAVEL)
 
-    def test_same_kind_of_provider_resumes_fine(self):
-        """Це і є виправлення: той самий тип провайдера — resume проходить."""
-        session = Session(self.space, self.guide, Counting())   # non-structured
+    def test_any_provider_resumes_fine(self):
+        session = Session(self.space, self.guide, Counting())
         session.start()
         session.answer("Їздили в Карпати.")
-        restored = Session.from_dict(self.space, self.guide, Counting(),
+        restored = Session.from_dict(self.space, self.guide, Structured(),
                                      session.to_dict())
         self.assertEqual(restored.session_id, session.session_id)
 
-    def test_genuinely_different_provider_still_rejected(self):
-        """Захист не зник: НАСПРАВДІ інший провайдер (інший формат промпту)
-        і далі не дозбирається — це лишається правильною поведінкою."""
-        session = Session(self.space, self.guide, Counting())   # compact
+    def test_genuinely_different_prompt_version_still_rejected(self):
+        """Якщо версію промпту дійсно змінили — стару сесію не дозбирають:
+        це змішало б дані двох різних методологій."""
+        session = Session(self.space, self.guide, Counting(),
+                          prompt_version="interviewer.v1")
         session.start()
         data = session.to_dict()
+        data["prompt_version"] = "interviewer.v0-стара"
         with self.assertRaises(ValueError):
-            Session.from_dict(self.space, self.guide, Structured(), data)  # v1
+            Session.from_dict(self.space, self.guide, Structured(), data)
 
 
 class TestAppendCountsAsAnAnswer(unittest.TestCase):
@@ -290,17 +288,16 @@ class TestHistoryExposesExpectedPoints(unittest.TestCase):
         self.assertTrue(item["expects"])
 
 
-class TestFreeModeStillWorks(unittest.TestCase):
-    """Простір без питань по темах веде розмову моделлю — і це інший інструмент."""
-
-    def test_space_without_topic_questions_has_no_script(self):
-        space, guide = load_space_dir(EXAMPLE)
-        session = Session(space, guide, Counting())
-        self.assertEqual(session.script, [],
-                         "простір без питань по темах пішов сценарним режимом")
+class TestScriptDetection(unittest.TestCase):
+    """Обидва простори в репозиторії — сценарні: питання завжди з гайда."""
 
     def test_travel_space_is_scripted(self):
         space, guide = load_space_dir(TRAVEL)
+        session = Session(space, guide, Counting())
+        self.assertTrue(session.script)
+
+    def test_example_space_is_scripted(self):
+        space, guide = load_space_dir(EXAMPLE)
         session = Session(space, guide, Counting())
         self.assertTrue(session.script)
 

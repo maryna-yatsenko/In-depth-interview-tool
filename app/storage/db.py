@@ -99,6 +99,13 @@ def ensure_schema() -> None:
                     purged_at TIMESTAMPTZ
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS feedback (
+                    session_id TEXT PRIMARY KEY,
+                    data JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+            """)
         conn.commit()
     _SCHEMA_READY = True
 
@@ -440,8 +447,35 @@ def delete_sessions_for_space(space_key: str) -> int:
             ids = [row[0] for row in cur.fetchall()]
             if ids:
                 cur.execute("DELETE FROM voice_clips WHERE session_id = ANY(%s)", (ids,))
+                cur.execute("DELETE FROM feedback WHERE session_id = ANY(%s)", (ids,))
             cur.execute("DELETE FROM live_sessions WHERE data->>'space' = %s", (space_key,))
             cur.execute("DELETE FROM finished_sessions WHERE data->>'space' = %s", (space_key,))
             removed = cur.rowcount
         conn.commit()
     return removed
+
+
+# ── відгук про досвід проходження (окремо від транскрипту) ───────────────
+
+def save_feedback(session_id: str, payload: Dict[str, Any]) -> None:
+    ensure_schema()
+    session_id = _safe_id(session_id)
+    body = json.dumps(payload, ensure_ascii=False)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO feedback (session_id, data) VALUES (%s, %s) "
+                "ON CONFLICT (session_id) DO UPDATE SET data = EXCLUDED.data",
+                (session_id, body),
+            )
+        conn.commit()
+
+
+def load_feedback(session_id: str) -> Optional[Dict[str, Any]]:
+    ensure_schema()
+    session_id = _safe_id(session_id)
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT data FROM feedback WHERE session_id = %s", (session_id,))
+            row = cur.fetchone()
+    return row[0] if row else None

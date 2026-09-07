@@ -15,6 +15,23 @@
   "use strict";
 
   var el = function (id) { return document.getElementById(id); };
+  // Простір із посилання (?space=<key>): сервер може обслуговувати кілька
+  // просторів одночасно (адмінка дає лінк на кожен окремо), і без цього
+  // параметра всі посилання вели б у той самий простір, з яким запущено
+  // сервер. Порожньо — сервер бере свій дефолтний (деплой на один простір,
+  // де параметра ніхто й не додає): поведінка лишається такою ж, як була.
+  var SPACE_KEY = new URLSearchParams(location.search).get("space") || "";
+  function withSpace(url) {
+    if (!SPACE_KEY) return url;
+    var sep = url.indexOf("?") === -1 ? "?" : "&";
+    return url + sep + "space=" + encodeURIComponent(SPACE_KEY);
+  }
+  // Заповнює watchBottomSpace() нижче. Окрема змінна, а не виклик напряму:
+  // showScreen() (значно вище за файлом) теж має її смикати одразу після
+  // того, як нижній блок стає видимим — саме на цьому переході
+  // ResizeObserver один раз не спрацював (був ще прихований батьківський
+  // екран, коли підписка щойно ставилась).
+  var recalcBottomSpace = function () {};
 
   /* Векторні іконки замість емодзі: однаковий вигляд у всіх системах і
      шрифтах (емодзі-рендер відрізняється між ОС), колір бере з тексту
@@ -27,7 +44,12 @@
     speaker: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19.5 5.5a9 9 0 0 1 0 13"/></svg>',
     mic: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>',
     redo: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 8 8 8"/></svg>',
-    keyboard: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>'
+    keyboard: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="6" y1="14" x2="18" y2="14"/></svg>',
+    // Обличчя, а не абстрактна крапка кольору: підсумок про те, наскільки
+    // розгорнуто відповідали, читається одразу, ще до тексту підпису.
+    faceGood: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 10.5h.01M15.5 10.5h.01"/><path d="M8 14.5q4 3.5 8 0"/></svg>',
+    faceWarn: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 10.5h.01M15.5 10.5h.01"/><line x1="8" y1="15" x2="16" y2="15"/></svg>',
+    faceLow: '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 10.5h.01M15.5 10.5h.01"/><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/></svg>'
   };
 
   var state = {
@@ -37,12 +59,10 @@
     phase: "idle",        // idle | listening | review | speaking
     finalText: "",        // розпізнане й підтверджене
     recognition: null,
-    speaker: null,
     waveform: null,
-    voiceName: null,
-    audio: null,          // <audio> для серверного озвучення
+    audio: null,          // <audio>, яким грається запис питання
     audioFinish: null,    // прибирання blob-у, якщо зупинили ззовні
-    lastAudioUrl: null,   // адреса запису поточного питання (режим банку)
+    lastAudioUrl: null,   // адреса запису поточного питання (людський голос)
     expectedWords: 15,
     // Нижче цієї межі рушій не зараховує нічого: одне-два слова — це не
     // відповідь, а слово. Клієнт знає межу, щоб назвати людині причину.
@@ -51,7 +71,6 @@
     autoplay: false,      // за замовчуванням питання лишається текстом
     prefetch: null,       // {url, blobUrl} — готове аудіо поточного питання
     prefetchFor: null,
-    ttsMode: "none",      // browser | server | none
     speaking: false,
     busy: false,
     interviewPhase: "",   // фаза з сервера: warmup | narrative | topics | closing
@@ -91,7 +110,6 @@
   /* ── памʼять про незавершену сесію ─────────────────────────────────── */
 
   var storeKey = function () { return "interview.session." + (state.space ? state.space.key : "?"); };
-  var voiceKey = function () { return "interview.voice." + (state.space ? state.space.key : "?"); };
 
   function remember(key, value) {
     try { window.localStorage.setItem(key, value); } catch (e) { /* приватний режим */ }
@@ -295,7 +313,7 @@
     // інтервʼюер і запише його питання як відповідь респондента. Але замикати
     // людину до кінця читання теж не треба — тому спершу глушимо голос, потім
     // слухаємо. Порядок тут і є вся суть.
-    if (state.speaking || (state.speaker && state.speaker.isSpeaking()) ||
+    if (state.speaking ||
         (state.audio && !state.audio.paused && !state.audio.ended)) {
       stopReading(true);
     }
@@ -437,7 +455,7 @@
     refreshOwnVoice();
 
     var entry = state.ownClips[state.ownClips.length - 1];
-    fetch("/api/voice?session_id=" + encodeURIComponent(state.sessionId), {
+    fetch(withSpace("/api/voice?session_id=" + encodeURIComponent(state.sessionId)), {
       method: "POST",
       headers: { "Content-Type": blob.type || "audio/webm" },
       body: blob
@@ -649,13 +667,19 @@
       host.innerHTML = "<p class='muted'>Поки що нічого — ви ще не відповіли на жодне запитання.</p>";
       return;
     }
-    shown.forEach(function (item) {
+    shown.forEach(function (item, index) {
       var box = document.createElement("div");
       box.className = "history-item";
 
       var question = document.createElement("p");
       question.className = "history-q";
-      question.textContent = item.question;
+      // Номер — щоб було видно, яке це за рахунком питання в розмові, а не
+      // лише «десь серед раніше сказаного».
+      var num = document.createElement("span");
+      num.className = "history-q-num";
+      num.textContent = (index + 1) + ".";
+      question.appendChild(num);
+      question.appendChild(document.createTextNode(" " + item.question));
       box.appendChild(question);
 
       // Те саме, чого чекали на цьому питанні, коли воно було поточним —
@@ -681,17 +705,19 @@
       (item.answers || []).forEach(function (part) {
         var answer = document.createElement("p");
         answer.className = "history-a";
-        // Позначку дає сервер, а не порядок: доповнення лежить у кінці
-        // транскрипту, і за позицією його не відрізнити.
-        if (part.added) {
-          answer.className += " added";
-          var mark = document.createElement("span");
-          mark.className = "added-mark";
-          mark.textContent = "згадали пізніше";
-          answer.appendChild(mark);
-        }
-        answer.appendChild(document.createTextNode(part.text));
-        attachVoicePlayback(answer, part.voice);
+        // "Додано пізніше" тепер каже лише колір обводки (styles.css,
+        // .history-a.added) — текстова позначка над відповіддю не несла
+        // окремого сенсу, лише дублювала колір словами.
+        if (part.added) answer.className += " added";
+        // Обводка зліва — на внутрішній обгортці, не на самому <p>: інакше
+        // вона тяглася б і крізь padding-bottom до пунктирної лінії знизу,
+        // і розрив між сірим/фіолетовим відрізком на межі двох відповідей
+        // був би непомітний (лінія й так пофарбована, просто іншим кольором).
+        var inner = document.createElement("div");
+        inner.className = "history-a-inner";
+        inner.appendChild(document.createTextNode(part.text));
+        attachVoicePlayback(inner, part.voice);
+        answer.appendChild(inner);
         box.appendChild(answer);
       });
 
@@ -741,7 +767,7 @@
         var finish = function (blob) {
           stream.getTracks().forEach(function (t) { t.stop(); });
           if (!blob || !blob.size || !state.sessionId) return;
-          fetch("/api/voice?session_id=" + encodeURIComponent(state.sessionId), {
+          fetch(withSpace("/api/voice?session_id=" + encodeURIComponent(state.sessionId)), {
             method: "POST",
             headers: { "Content-Type": blob.type || "audio/webm" },
             body: blob
@@ -802,8 +828,8 @@
       var cancel = document.createElement("button");
       cancel.className = "ghost";
       cancel.textContent = "Скасувати";
-      actions.appendChild(save);
       actions.appendChild(cancel);
+      actions.appendChild(save);
       editor.appendChild(field);
       editor.appendChild(dictateTools);
       editor.appendChild(actions);
@@ -950,6 +976,17 @@
     // згоди лишається в звичайному потоці, бо його треба дочитати до кінця.
     var shell = document.querySelector(".shell");
     if (shell) shell.classList.toggle("shell-fixed", name === "interview");
+    recalcBottomSpace();
+  }
+
+  /* Один вихід на екран подяки з двох різних місць (вільна розповідь
+     дійшла кінця сама / людина явно натиснула «Надіслати мої відповіді») —
+     щоб скидання форми відгуку не забули додати лише в одному з них. */
+  function finishToDoneScreen(utterance) {
+    forget(storeKey());
+    el("done-text").textContent = utterance;
+    resetFeedbackForm();
+    showScreen("done");
   }
 
   function plural(count, one, few, many) {
@@ -1126,8 +1163,8 @@
     // «Думаю…» уже тоді, коли людина читає наступне питання.
     setStatus("");
     state.lastAudioUrl = audioUrl || null;
-    // Озвучення доступне, якщо є запис репліки або налаштований синтез.
-    state.audioAvailable = !!audioUrl || state.ttsMode !== "none";
+    // Озвучення доступне, лише якщо дослідник записав це питання голосом.
+    state.audioAvailable = !!audioUrl;
     setAudioBar(state.audioAvailable, false);
     if (state.audioAvailable) prefetchAudio(audioUrl);
 
@@ -1151,8 +1188,6 @@
     if (state.lastAudioUrl) {
       var url = state.lastAudioUrl;
       playRecorded(url + (url.indexOf("?") === -1 ? "?t=" : "&t=") + Date.now());
-    } else {
-      speakQuestion(el("utterance-text").textContent);
     }
   }
 
@@ -1166,7 +1201,13 @@
     el("audio-dot").classList.toggle("hidden", !speaking);
     el("btn-listen").classList.toggle("hidden", !!speaking);
     el("btn-stop-speak").classList.toggle("hidden", !speaking);
-    el("audio-text").textContent = speaking ? "Читаю питання…" : "Питання можна прослухати";
+    // Без "Питання можна прослухати" в стані спокою: кнопка поруч і так
+    // очевидно про це каже, підпис лише дублював. "Читаю питання…" лишили —
+    // це стан, а не пояснення очевидного. Приховуємо порожній підпис (не
+    // лише textContent = "") — інакше він, навіть порожній, лишається
+    // окремим елементом рядка й gap між елементами відсуває кнопку праворуч.
+    el("audio-text").classList.toggle("hidden", !speaking);
+    el("audio-text").textContent = speaking ? "Читаю питання…" : "";
   }
 
   function setSpeakingUI(speaking) {
@@ -1205,42 +1246,21 @@
     startPlayback(new Audio(url), null);
   }
 
-  /* Попередній синтез: аудіо готується у фоні одразу, як прийшло питання.
-     Автовідтворення при цьому НЕ вмикається — просто до моменту натискання
-     файл уже готовий, і затримка нульова. */
+  /* Попереднє прогрівання кешу: щойно прийшло питання із записом, браузер
+     одразу починає його вантажити — тоді натискання «Прослухати» грає без
+     затримки. */
   function prefetchAudio(audioUrl) {
     // Blob попереднього питання більше не потрібен — звільняємо саме тут,
-    // а не після відтворення: інакше повторне «Прослухати» знову чекало б синтез.
+    // а не після відтворення: інакше повторне «Прослухати» знову чекало б.
     if (state.prefetch && state.prefetch.blobUrl) URL.revokeObjectURL(state.prefetch.blobUrl);
     state.prefetch = null;
     state.prefetchFor = null;
-    if (audioUrl) {
-      // Записана репліка: браузер сам покладе її в кеш.
-      var probe = new Audio(audioUrl);
-      probe.preload = "auto";
-      state.prefetch = { url: audioUrl, blobUrl: null };
-      state.prefetchFor = audioUrl;
-      return;
-    }
-    if (state.ttsMode !== "server") return;
-
-    var forSession = state.sessionId;
-    fetch("/api/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: forSession })
-    }).then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.blob();
-    }).then(function (blob) {
-      // Питання могло змінитись, поки синтезувалось — тоді результат зайвий.
-      if (state.sessionId !== forSession) return;
-      var url = URL.createObjectURL(blob);
-      state.prefetch = { url: url, blobUrl: url };
-      state.prefetchFor = "server";
-    }).catch(function () {
-      state.prefetch = null;
-    });
+    if (!audioUrl) return;
+    // Записана репліка: браузер сам покладе її в кеш.
+    var probe = new Audio(audioUrl);
+    probe.preload = "auto";
+    state.prefetch = { url: audioUrl, blobUrl: null };
+    state.prefetchFor = audioUrl;
   }
 
   function startPlayback(audio, blobUrl) {
@@ -1263,30 +1283,6 @@
     audio.play().catch(function () { finish(false); });
   }
 
-  /* Серверне озвучення. Текст у запиті НЕ передається — сервер сам бере останнє
-     питання цієї сесії (інакше ендпоінт став би безкоштовним TTS-проксі). */
-  function serverSpeak() {
-    stopAudio();
-    setSpeakingUI(true);
-    setStatus("");
-
-    fetch("/api/speak", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: state.sessionId })
-    }).then(function (response) {
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      return response.blob();
-    }).then(function (blob) {
-      var url = URL.createObjectURL(blob);
-      startPlayback(new Audio(url), url);
-    }).catch(function () {
-      // Не змогли озвучити — питання лишається на екрані текстом.
-      setStatus("Не вдалося озвучити питання — прочитайте його, будь ласка.", true);
-      afterSpeaking();
-    });
-  }
-
   function stopAudio() {
     if (state.audio) {
       try { state.audio.pause(); } catch (e) { /* уже зупинено */ }
@@ -1295,64 +1291,14 @@
     if (state.audioFinish) state.audioFinish();
   }
 
-  function speakQuestion(text) {
-    if (state.ttsMode === "server") { serverSpeak(); return; }
-    if (state.ttsMode !== "browser" || !state.speaker) return;
-
-    setSpeakingUI(true);
-    setStatus("");
-    state.speaker.speak(text, { onEnd: afterSpeaking });
-  }
-
   function stopSpeaking() {
-    if (state.speaker) state.speaker.stop();
     stopAudio();
-  }
-
-  /* ── вибір голосу ──────────────────────────────────────────────────── */
-
-  function buildVoiceChoice() {
-    if (!window.ITAudio || !window.speechSynthesis) return;
-    if (!state.space.voice || state.space.voice.tts !== "browser") return;
-
-    var voices = window.ITAudio.listVoices(langTag());
-    if (voices.length < 2) {
-      // Один голос — вибирати нема з чого, і фальшивий вибір гірший за його
-      // відсутність. Скільки голосів реально є, видно в панелі дослідника.
-      return;
-    }
-
-    var host = el("voice-options");
-    host.innerHTML = "";
-    voices.forEach(function (voice) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "voice-option" + (voice.name === state.voiceName ? " active" : "");
-      button.appendChild(document.createTextNode(voice.name));
-      var hint = document.createElement("span");
-      hint.className = "try";
-      hint.textContent = "прослухати";
-      button.appendChild(hint);
-      button.addEventListener("click", function () {
-        state.voiceName = voice.name;
-        remember(voiceKey(), voice.name);
-        if (state.speaker) state.speaker.setVoiceName(voice.name);
-        Array.prototype.forEach.call(host.children, function (node) {
-          node.classList.toggle("active", node === button);
-        });
-        if (state.speaker) {
-          state.speaker.speak("Добрий день. Я поставлю кілька питань про ваш досвід.", {});
-        }
-      });
-      host.appendChild(button);
-    });
-    el("voice-choice").classList.remove("hidden");
   }
 
   /* ── мережа ────────────────────────────────────────────────────────── */
 
   function post(url, body) {
-    return fetch(url, {
+    return fetch(withSpace(url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {})
@@ -1375,14 +1321,46 @@
     }
     if (state.space.repertoire === "bank") {
       parts.push(ICONS.speaker + " Питання можна прослухати записаним людським голосом.");
-    } else if (state.ttsMode !== "none") {
-      parts.push(ICONS.speaker + " Питання можна прослухати.");
     }
     el("capabilities").innerHTML = parts.join(" ");
   }
 
+  /* Тема — той самий трек-тогл (сонце/місяць) із рухомою пігулкою, що й у
+     кабінеті дослідника (.theme-switch/.theme-btn, admin.js), лише прибитий
+     до кута екрана (styles.css). data-theme стоїть на <html> (document
+     Element), бо змінні лежать на :root, не на <body>, як в адмінці. */
+  function currentTheme() {
+    return document.documentElement.dataset.theme ||
+      (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+  function initThemeSwitch() {
+    var lightBtn = el("btn-theme-light");
+    var darkBtn = el("btn-theme-dark");
+    var switchEl = document.querySelector(".theme-switch");
+    if (!lightBtn || !darkBtn || !switchEl) return;
+    var KEY = "interview-theme";
+    function paint() {
+      var now = currentTheme();
+      lightBtn.classList.toggle("active", now === "light");
+      darkBtn.classList.toggle("active", now === "dark");
+      switchEl.dataset.active = now;
+    }
+    function apply(theme) {
+      document.documentElement.dataset.theme = theme;
+      try { localStorage.setItem(KEY, theme); } catch (e) { /* приватний режим — ігнор */ }
+      paint();
+    }
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) { /* ігнор */ }
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+    paint();
+    lightBtn.addEventListener("click", function () { apply("light"); });
+    darkBtn.addEventListener("click", function () { apply("dark"); });
+  }
+  initThemeSwitch();
+
   function loadSpace() {
-    return fetch("/api/space").then(function (r) { return r.json(); }).then(function (space) {
+    return fetch(withSpace("/api/space")).then(function (r) { return r.json(); }).then(function (space) {
       state.space = space;
       state.mode = (space.interface && space.interface.mode) || "text";
       state.autoplay = !!(space.interface && space.interface.autoplay);
@@ -1394,47 +1372,38 @@
       el("record-consent").classList.toggle("hidden", !state.recordVoice);
       // Де запис пропонують — без згоди на нього не почати: голос неможливо
       // деідентифікувати, тому це не другорядна дрібниця, а умова старту.
-      el("btn-consent").disabled = state.recordVoice && !el("chk-record").checked;
+      syncStartButton();
       document.title = space.title;
       el("consent-title").textContent = space.title;
       el("consent-text").textContent = space.consent_text ||
         "Розмова записується у вигляді тексту і використовується для дослідження.";
-      // Лише світла тема: у темній --accent і --on-accent підібрані парою
-      // під контраст WCAG (кожен --accent там світліший, а --on-accent —
-      // темний текст саме під нього), і підміна тільки кольору тла лишила б
-      // текст на кнопці нечитабельним. Дефолт теми в обох темах уже
-      // сумісний, тож тут просто не чіпаємо темну.
-      if (space.accent && !window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        document.documentElement.style.setProperty("--accent", space.accent);
-      }
+      // Кастомний акцент простору (space.accent) свідомо ігноруємо: сторінка
+      // респондента завжди показує стандартний фіолетовий, в обох темах —
+      // те саме поле в адмінці згодом приберуть як застаріле.
+      state.feedbackStyle = space.feedback_style === "emoji" ? "emoji" : "stars";
+      el("feedback-title").textContent = space.feedback_prompt ||
+        "Як вам було проходити це інтервʼю?";
+      applyFeedbackStyle();
 
-      var tts = space.tts || {};
-      var ttsProvider = (space.voice && space.voice.tts) || "none";
-      state.ttsMode = ttsProvider === "browser"
-        ? "browser"
-        : (ttsProvider === "none" ? "none" : "server");
-
-      state.voiceName = recall(voiceKey()) || tts.voice || null;
-      if (state.ttsMode === "browser" && window.speechSynthesis && window.ITAudio) {
-        state.speaker = window.ITAudio.createSpeaker({
-          lang: langTag(),
-          voiceName: state.voiceName,
-          rate: (tts.rate || 0.97) * effectiveRate(),
-          pitch: tts.pitch || 1.0,
-          gap: tts.gap == null ? 140 : tts.gap
-        });
-      }
       refreshActions();
       describeCapabilities();
+    });
+  }
 
-      // Голоси приходять асинхронно — інакше перший вибір буде порожній.
-      if (window.speechSynthesis) {
-        window.speechSynthesis.getVoices();
-        window.speechSynthesis.addEventListener
-          ? window.speechSynthesis.addEventListener("voiceschanged", buildVoiceChoice)
-          : (window.speechSynthesis.onvoiceschanged = buildVoiceChoice);
-        window.setTimeout(buildVoiceChoice, 350);
-      }
+  // Зірочки заливаються кумулятивно (1-2-3 з 5), смайлики — питання про
+  // емоцію, а не про «скільки»: підсвічується лише один вибраний, як
+  // група радіо-кнопок, якою цей контрол уже й позначений в розмітці.
+  var FEEDBACK_EMOJI = ["😞", "🙁", "😐", "🙂", "😄"];
+
+  function applyFeedbackStyle() {
+    // Стиль фіксується один раз при завантаженні сторінки (loadSpace
+    // викликається лише тут, при старті) — повертати SVG назад нема
+    // потреби, це не перемикач посеред сесії.
+    var isEmoji = state.feedbackStyle === "emoji";
+    el("feedback-stars").classList.toggle("emoji-mode", isEmoji);
+    if (!isEmoji) return;
+    document.querySelectorAll(".feedback-star").forEach(function (star) {
+      star.textContent = FEEDBACK_EMOJI[Number(star.dataset.value) - 1] || "";
     });
   }
 
@@ -1486,22 +1455,42 @@
     showScreen("interview");
     renderQuestion(data);
     if (state.mode === "text") el("answer").focus();
+    // Плавна поява нижньої панелі (styles.css, .reveal) — окремим кроком,
+    // не одразу: рендер вище (прогрес-бар, чекліст, текст питання) важкий
+    // і синхронний, і якби анімація стартувала на цьому самому кадрі,
+    // перші її кадри губились би, і поява виглядала б різкою. Подвійний
+    // rAF — не один: перший спрацьовує ще до того, як браузер устиг
+    // розкласти щойно відрендерене (клас додався б у той самий кадр, що й
+    // uncover); другий гарантовано йде вже після реального layout/paint.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var panel = el(state.mode === "voice" ? "voice-area" : "answer-area");
+        if (panel) panel.classList.add("reveal");
+      });
+    });
+  }
+
+  // ПІБ — умова старту так само, як згода на запис голосу: без нього кнопка
+  // лишається заблокованою.
+  function syncStartButton() {
+    var missingConsent = state.recordVoice && !el("chk-record").checked;
+    var missingName = !el("respondent-name").value.trim();
+    el("btn-consent").disabled = missingConsent || missingName;
   }
 
   function begin() {
     el("btn-consent").disabled = true;
-    if (window.speechSynthesis) window.speechSynthesis.getVoices();
     var wantsRecord = state.recordVoice && el("chk-record").checked;
-    post("/api/start", { record_voice: wantsRecord })
+    var respondentName = el("respondent-name").value.trim();
+    post("/api/start", { record_voice: wantsRecord, respondent_name: respondentName })
       .then(enterInterview).catch(function (err) {
-      el("btn-consent").disabled = false;
+      syncStartButton();
       el("capabilities").textContent = "Не вдалося почати: " + err.message;
     });
   }
 
   function resume() {
     el("btn-resume").disabled = true;
-    if (window.speechSynthesis) window.speechSynthesis.getVoices();
     post("/api/resume", { session_id: recall(storeKey()) }).then(enterInterview)
       .catch(function (err) {
         forget(storeKey());
@@ -1522,6 +1511,9 @@
         : "Можна продовжити з того місця, де ви зупинились.";
       el("resume-box").classList.remove("hidden");
       el("start-box").classList.add("hidden");
+      // Ім'я вже збережене на відновлюваній сесії — поле для нового вводу
+      // тут лише плутало б.
+      el("name-field").classList.add("hidden");
     }).catch(function () {
       forget(storeKey());
     });
@@ -1614,9 +1606,7 @@
           return;
         }
         if (data.done) {
-          forget(storeKey());
-          el("done-text").textContent = data.utterance;
-          showScreen("done");
+          finishToDoneScreen(data.utterance);
           return;
         }
         if (data.hold) {
@@ -1695,8 +1685,19 @@
                  : avg >= state.expectedWords / 2 ? "warn" : "low";
         var labels = { good: "Розгорнуті відповіді", warn: "Помірно розгорнуті",
                        low: "Стислі відповіді" };
+        // Сама назва тіру нічого не каже респонденту, навіщо йому це бачити
+        // й що з цим робити — підказка внизу відповідає на обидва питання,
+        // і для "good" теж: без неї виглядало б, ніби чогось бракує.
+        var hints = {
+          good: "Дослідник отримає багато деталей — дякуємо за розгорнуту розповідь.",
+          warn: "Непогано. Якщо є що додати — це можна зробити нижче, кнопкою «Додати ще щось».",
+          low: "Відповіді вийшли короткими. За бажання розкрийте їх детальніше — кнопкою «Додати ще щось» нижче."
+        };
+        var icons = { good: "faceGood", warn: "faceWarn", low: "faceLow" };
         quality.className = "summary-quality tier-" + tier;
+        el("summary-quality-icon").innerHTML = ICONS[icons[tier]];
         el("summary-quality-label").textContent = labels[tier];
+        el("summary-quality-hint").textContent = hints[tier];
       }
     }
     showScreen("summary");
@@ -1705,14 +1706,15 @@
   /* ── події ─────────────────────────────────────────────────────────── */
 
   el("btn-consent").addEventListener("click", begin);
-  el("chk-record").addEventListener("change", function () {
-    el("btn-consent").disabled = state.recordVoice && !el("chk-record").checked;
-  });
+  el("chk-record").addEventListener("change", syncStartButton);
+  el("respondent-name").addEventListener("input", syncStartButton);
   el("btn-resume").addEventListener("click", resume);
   el("btn-restart").addEventListener("click", function () {
     forget(storeKey());
     el("resume-box").classList.add("hidden");
     el("start-box").classList.remove("hidden");
+    el("name-field").classList.remove("hidden");
+    syncStartButton();
   });
 
   el("btn-talk").addEventListener("click", function () {
@@ -1763,9 +1765,7 @@
     el("btn-summary-send").disabled = true;
     post("/api/finish", { session_id: state.sessionId }).then(function (data) {
       state.busy = false;
-      forget(storeKey());
-      el("done-text").textContent = data.utterance;
-      showScreen("done");
+      finishToDoneScreen(data.utterance);
     }).catch(function (err) {
       state.busy = false;
       el("btn-summary-send").disabled = false;
@@ -1777,9 +1777,120 @@
     forget(storeKey());
     el("resume-box").classList.add("hidden");
     el("start-box").classList.remove("hidden");
-    el("btn-consent").disabled = state.recordVoice && !el("chk-record").checked;
+    el("name-field").classList.remove("hidden");
+    syncStartButton();
     showScreen("consent");
   });
+
+  /* Відгук про сам досвід проходження — екран «Дякую». Необовʼязково: жодна
+     зірка не мусить бути обрана, кнопка «Надіслати» вмикається, щойно є
+     оцінка АБО коментар (щось одне вже має сенс відправляти). */
+  (function () {
+    var stars = Array.prototype.slice.call(document.querySelectorAll(".feedback-star"));
+    var comment = el("feedback-comment");
+    var sendBtn = el("btn-feedback-send");
+    if (!stars.length || !comment || !sendBtn) return;
+
+    function paint(upTo) {
+      stars.forEach(function (star) {
+        var value = Number(star.dataset.value);
+        // Зірки — заливка кумулятивна («3 з 5» лишає підсвіченими 1,2,3);
+        // смайлики — обране почуття, а не кількість, тому підсвічується
+        // лише один, обраний саме зараз.
+        var filled = state.feedbackStyle === "emoji" ? value === upTo : value <= upTo;
+        star.classList.toggle("is-filled", filled);
+      });
+    }
+    stars.forEach(function (star) {
+      star.addEventListener("mouseenter", function () { paint(Number(star.dataset.value)); });
+      star.addEventListener("click", function () {
+        state.feedbackRating = Number(star.dataset.value);
+        paint(state.feedbackRating);
+        refreshFeedbackSend();
+      });
+    });
+    el("feedback-stars").addEventListener("mouseleave", function () {
+      paint(state.feedbackRating || 0);
+    });
+
+    function refreshFeedbackSend() {
+      sendBtn.disabled = !state.feedbackRating && !comment.value.trim();
+    }
+    comment.addEventListener("input", refreshFeedbackSend);
+
+    sendBtn.addEventListener("click", function () {
+      sendBtn.disabled = true;
+      post("/api/feedback", {
+        session_id: state.sessionId,
+        rating: state.feedbackRating || null,
+        comment: comment.value.trim()
+      }).then(function () {
+        el("feedback-block").classList.add("hidden");
+        el("feedback-thanks").classList.remove("hidden");
+      }).catch(function (err) {
+        sendBtn.disabled = false;
+        el("feedback-status").textContent = "Не вдалося надіслати: " + err.message;
+      });
+    });
+    el("btn-feedback-skip").addEventListener("click", function () {
+      el("feedback-block").classList.add("hidden");
+    });
+  })();
+
+  /* Скидання перед кожним новим показом екрана «Дякую» (finishToDoneScreen):
+     без цього повторне інтервʼю в тій самій вкладці показало б минулу
+     оцінку чи вимкнену кнопку «Надіслати» від попереднього разу. */
+  function resetFeedbackForm() {
+    state.feedbackRating = 0;
+    document.querySelectorAll(".feedback-star").forEach(function (star) {
+      star.classList.remove("is-filled");
+    });
+    var comment = el("feedback-comment");
+    if (comment) comment.value = "";
+    var sendBtn = el("btn-feedback-send");
+    if (sendBtn) sendBtn.disabled = true;
+    el("feedback-status").textContent = "";
+    el("feedback-block").classList.remove("hidden");
+    el("feedback-thanks").classList.add("hidden");
+  }
+
+  /* Нижній блок (voice-area/answer-area) — абсолютний, прибитий до низу
+     (styles.css), тому фізично не займає місця в потоці. Прокрутна зона
+     питання відступає від нього на його висоту + невеликий запас
+     (margin, не padding — інакше довге питання могло б доскролитись
+     впритул до чекліста без жодного проміжку). Висота міняється (чекліст,
+     помилки, смуга «читаю») — тому стежимо, а не рахуємо один раз при
+     завантаженні. */
+  var BOTTOM_GAP = 24;
+  function watchBottomSpace() {
+    var targets = [el("voice-area"), el("answer-area")].filter(Boolean);
+    if (!targets.length) return;
+    var apply = function () {
+      var height = 0;
+      targets.forEach(function (t) { height = Math.max(height, t.offsetHeight); });
+      document.documentElement.style.setProperty("--bottom-space", (height + BOTTOM_GAP) + "px");
+    };
+    recalcBottomSpace = apply;
+    if (window.ResizeObserver) {
+      var observer = new ResizeObserver(apply);
+      targets.forEach(function (t) { observer.observe(t); });
+    } else {
+      window.addEventListener("resize", apply);
+    }
+    /* ResizeObserver сам по собі не завжди встигає: чекліст і текст відповіді
+       дозаповнюються асинхронно вже після появи екрана, і бувало, що саме цю
+       зміну висоти він пропускав (--bottom-space застигав на проміжному
+       значенні). MutationObserver на вміст цих блоків — підстраховка, що
+       перераховує на будь-яку зміну DOM усередині, а не лише на власний resize. */
+    if (window.MutationObserver) {
+      var mutationObserver = new MutationObserver(apply);
+      targets.forEach(function (t) {
+        mutationObserver.observe(t, { childList: true, subtree: true, characterData: true, attributes: true });
+      });
+    }
+    apply();
+  }
+  watchBottomSpace();
 
   loadSpace().then(offerResume).catch(function (err) {
     el("capabilities").textContent = "Не вдалося завантажити конфіг: " + err.message;

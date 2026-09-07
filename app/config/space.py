@@ -21,18 +21,15 @@ class ConfigError(ValueError):
 
 @dataclass
 class Persona:
-    """Хто саме питає. Тон — конфіг, а не риса коду."""
+    """Хто саме питає."""
 
     self_intro: str                      # як інтервʼюер представляється
-    address: str = "ви"                  # "ви" / "ти"
-    tone: str = "нейтральний, стриманий"
 
 
 @dataclass
 class Privacy:
-    """Що не питати і що вичищати. Для кожного простору своє."""
+    """Що вичищати. Для кожного простору своє."""
 
-    never_ask_about: List[str] = field(default_factory=list)
     deidentify: bool = False
     consent_text: str = ""
     # Доменні шаблони маскування: формати реєстрових кодів, номерів справ тощо.
@@ -48,37 +45,31 @@ class SpaceConfig:
     languages: List[str]                 # мови інтервʼю, перша — основна
     persona: Persona
     privacy: Privacy
-    domain_vocabulary: List[str] = field(default_factory=list)
     branding: Dict[str, Any] = field(default_factory=dict)
-    report_sections: List[str] = field(default_factory=list)
     providers: Dict[str, Any] = field(default_factory=dict)
     # Режим інтерфейсу респондента: "voice" (лише голос, без поля введення)
     # або "text". Резерв у текст лишається завжди — коли мікрофона немає,
     # людину не можна заводити в тупик.
     interface: Dict[str, Any] = field(default_factory=dict)
-    # Репертуар інтервʼюера: "free" — модель формулює питання сама;
-    # "bank" — вибирає з набору реплік, записаних людським голосом.
-    # Банк методологічно чистіший (усі чують однакові формулювання й навідне
-    # питання не може виникнути за побудовою), але менш гнучкий.
+    # Репертуар інтервʼюера: "free" — питання дослівно з гайда (сценарій,
+    # `Topic.ask_if_missed`/`ask_for_detail`); "bank" — модель лише вибирає
+    # репліку з набору, записаного людським голосом. В обох випадках модель
+    # не формулює текст питання сама.
     repertoire: str = "free"
     # Чернетка = простір створений із шаблону і ще не заповнений. Інтервʼю з
     # такого простору не стартує: інакше реальному респонденту дістанеться
     # текст заготовки, і це виявиться вже після розмови.
     draft: bool = False
+    # ISO-timestamp, проставляється один раз у create_space() і більше не
+    # змінюється — на відміну від mtime файлу, який зсувається при кожному
+    # редагуванні через адмінку. Може бути відсутнім у просторах, створених
+    # до появи цього поля (None — адмінка тоді підставляє mtime як запасний
+    # варіант, див. list_spaces()).
+    created_at: Optional[str] = None
 
     @property
     def primary_language(self) -> str:
         return self.languages[0]
-
-    @property
-    def requires_spoken_form(self) -> bool:
-        """Чи мусить інтервʼюер писати числа словами й без латиниці.
-
-        Символьні TTS-моделі (Piper) не мають у алфавіті ні цифр, ні латиниці —
-        вони зникають без помилки. Це властивість каналу, не методології, тому
-        визначається провайдером озвучення, а не окремим полем у конфізі.
-        """
-        return (self.providers.get("tts") or {}).get("provider") == "piper"
 
 
 @dataclass
@@ -143,6 +134,11 @@ class Guide:
     # окреме правило «тримати в голові на всі теми».
     deepening: List[str] = field(default_factory=list)
     generalization_markers: List[str] = field(default_factory=list)
+    # Екран подяки: як питати респондента про сам досвід проходження —
+    # окремо від дослідження. Рівень гайда, а не простору: тон може
+    # відрізнятись між гайдами того самого простору.
+    feedback_prompt: str = ""
+    feedback_style: str = "stars"
 
 
 def _require(data: Dict[str, Any], keys: List[str], where: str) -> None:
@@ -164,7 +160,6 @@ def load_space(path: str) -> SpaceConfig:
 
     privacy_raw = data.get("privacy", {})
     privacy = Privacy(
-        never_ask_about=privacy_raw.get("never_ask_about", []),
         deidentify=bool(privacy_raw.get("deidentify", False)),
         consent_text=privacy_raw.get("consent_text", ""),
         patterns=privacy_raw.get("patterns", []),
@@ -185,12 +180,6 @@ def load_space(path: str) -> SpaceConfig:
         raise ConfigError(
             "space.json → privacy: deidentify=true, вбудовані шаблони вимкнені, "
             "власних немає — маскування нічого не робитиме, але вигляд захисту створює"
-        )
-    if privacy.deidentify and not privacy.never_ask_about:
-        # Не блокуємо, але це майже завжди помилка конфігу.
-        raise ConfigError(
-            "space.json → privacy: deidentify=true, але never_ask_about порожній — "
-            "вичищати транскрипт, не сказавши інтервʼюеру, чого не питати, — це лікувати симптом"
         )
 
     repertoire = data.get("repertoire", "free")
@@ -227,19 +216,14 @@ def load_space(path: str) -> SpaceConfig:
         key=data["key"],
         title=data["title"],
         languages=data["languages"],
-        persona=Persona(
-            self_intro=persona_raw["self_intro"],
-            address=persona_raw.get("address", "ви"),
-            tone=persona_raw.get("tone", "нейтральний, стриманий"),
-        ),
+        persona=Persona(self_intro=persona_raw["self_intro"]),
         privacy=privacy,
-        domain_vocabulary=data.get("domain_vocabulary", []),
         branding=data.get("branding", {}),
-        report_sections=data.get("report_sections", []),
         providers=data.get("providers", {}),
         interface=interface,
         repertoire=repertoire,
         draft=bool(data.get("draft", False)),
+        created_at=data.get("created_at"),
     )
 
 
@@ -278,7 +262,12 @@ def _item_requirements(items) -> Dict[str, int]:
     return out
 
 
-def load_guide(path: str) -> Guide:
+def load_guide(path: str, require_scripted: bool = False) -> Guide:
+    """`require_scripted=True` — кожна тема мусить мати `ask_if_missed`:
+    поза режимом банку питання формулює виключно дослідник, і тема без
+    дослівного тексту означала б, що модель має формулювати його сама, а
+    цього більше не робимо. Викликає з цим прапорцем `load_space_dir` (де
+    відомий `repertoire` простору) і адмінка при збереженні гайда."""
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
@@ -307,11 +296,27 @@ def load_guide(path: str) -> Guide:
             )
         )
 
+    if require_scripted:
+        missing = [t.id for t in topics if not t.ask_if_missed]
+        if missing:
+            raise ConfigError(
+                "%s: теми без ask_if_missed (%s) — кожна тема мусить мати "
+                "дослівне питання, дописане дослідником"
+                % (os.path.basename(path), ", ".join(missing))
+            )
+
     narrative = data.get("narrative") or {}
     if narrative and not narrative.get("prompt"):
         raise ConfigError(
             "%s → narrative: є блок, але немає `prompt` — фаза розповіді без "
             "запиту на розповідь не має сенсу" % os.path.basename(path)
+        )
+
+    feedback_style = data.get("feedback_style", "stars")
+    if feedback_style not in ("stars", "emoji"):
+        raise ConfigError(
+            "%s → feedback_style: '%s' невідомий. Допустимі: stars, emoji."
+            % (os.path.basename(path), feedback_style)
         )
 
     # Підсумкові питання приймаємо і рядками, і обʼєктами {text, expects}:
@@ -341,6 +346,8 @@ def load_guide(path: str) -> Guide:
         narrative_holds=narrative.get("holds", []),
         closing_questions=closing_texts,
         closing_expects=closing_expects,
+        feedback_prompt=data.get("feedback_prompt", ""),
+        feedback_style=feedback_style,
         opening_expects=data.get("opening_expects", []),
         deepening=data.get("deepening", []),
         generalization_markers=data.get("generalization_markers", []),
@@ -365,4 +372,10 @@ def load_space_dir(space_dir: str, guide_key: Optional[str] = None):
             )
     else:
         target = files[0]
-    return space, load_guide(os.path.join(guides_dir, target))
+    # Поза банком питання формулює виключно дослідник — моделі формулювати
+    # їх самій більше нема як (вільний режим прибрано): кожна тема мусить
+    # мати дослівне ask_if_missed. У банку інакше — там питання все одно
+    # записане людським голосом, просто не по темах гайда.
+    guide = load_guide(os.path.join(guides_dir, target),
+                       require_scripted=(space.repertoire != "bank"))
+    return space, guide

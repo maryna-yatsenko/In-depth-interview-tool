@@ -17,28 +17,17 @@ from typing import Any, Dict, List, Optional
 from ..config import space as space_config
 from ..config.space import Guide, SpaceConfig
 from ..providers.base import LLMProvider, ProviderError
-from . import guard, phases
+from . import phases
 from . import judge as judging
 from .deidentify import Deidentifier
 from .prompt_builder import (
     BANK_TURN_SCHEMA,
-    COMPACT_PROMPT_VERSION,
     DEFAULT_PROMPT_VERSION,
-    TURN_SCHEMA,
     build_state_block,
     build_system,
-    build_system_compact,
 )
 
 MAX_GUARD_RETRIES = 2
-
-# Нейтральні відступні репліки: жодного домену, жодної підказки. Використовуються,
-# коли модель тричі підряд не змогла сформулювати репліку без порушень.
-_FALLBACK_PROBES = [
-    "Розкажіть, будь ласка, про останній конкретний випадок.",
-    "Що ви зробили далі?",
-    "Що сталося потім?",
-]
 
 
 @dataclass
@@ -83,13 +72,9 @@ class Session:
         self.started_at = _now()
         self.finished_at = None  # type: Optional[str]
 
-        # Провайдер без структурованого виводу отримує скорочений промпт:
-        # повний коштує йому вп'ятеро більше часу на кожну репліку.
-        self.structured = getattr(llm, "supports_structured", True)
-        if not self.structured and prompt_version == DEFAULT_PROMPT_VERSION:
-            self.prompt_version = COMPACT_PROMPT_VERSION
-        self.system = (build_system(space, guide, self.prompt_version, bank=bank)
-                       if self.structured else None)
+        # Потрібен лише банку (вибір репліки — структурований виклик моделі);
+        # для сценарію текст іде дослівно з гайда, модель тут не бере участі.
+        self.system = build_system(space, guide, self.prompt_version, bank=bank)
         # На вході, не при збереженні: інакше персональні дані спершу поїдуть
         # у вендора моделі, а «вичистимо» ми потім лише файл.
         self.deidentifier = Deidentifier.from_space(space)
@@ -106,18 +91,19 @@ class Session:
             t.ask_if_missed or t.ask_for_detail for t in guide.topics
         ) else None
         self.phase_state = phases.PhaseState()
-        # ── два режими, і різниця між ними принципова ──────────────────
+        # ── сценарій vs банк, і різниця між ними принципова ─────────────
         #
-        # СЦЕНАРІЙ (гайд дає питання по темах): порядок задає дослідник, темп —
-        # людина кнопками «наступне»/«попереднє». Модель не вирішує нічого:
-        # чекліст тут шпаргалка, а не облік. Так працює простір «подорожі».
+        # СЦЕНАРІЙ (гайд дає питання по темах): порядок і текст задає
+        # дослідник, темп — людина кнопками «наступне»/«попереднє». Модель
+        # не формулює жодного питання: чекліст тут шпаргалка, а не облік.
         #
-        # ВІЛЬНИЙ РЕЖИМ (гайд питань не дає, лише теми й мету): питання
-        # формулює модель, і тоді їй потрібне відстеження прогалин — інакше
-        # вона не знає, про що питати далі. Так працює простір «example».
+        # БАНК (`repertoire: bank`, окремий простір без сценарію): модель
+        # лише ВИБИРАЄ репліку з набору, записаного людським голосом, — вона
+        # теж нічого не формулює сама.
         #
-        # Обидва лишаються, бо це різні інструменти. Судження моделі про «чи
-        # можна далі» живе тільки у вільному режимі, де без нього не обійтись.
+        # Вільного формулювання питань моделлю в цьому інструменті більше
+        # немає: усе, що респондент чує, — або дослівний текст гайда, або
+        # заздалегідь записана дослідником репліка.
         scripted = self.plan is not None and any(
             topic.ask_if_missed or topic.ask_for_detail for topic in guide.topics)
         self.script = self.plan.script() if scripted else []
@@ -130,6 +116,9 @@ class Session:
         # Згода на запис голосу — окреме рішення респондента, не частина згоди
         # на інтервʼю. Голос неможливо деідентифікувати, тому питається прямо.
         self.voice_consent = False
+        # ПІБ, як і згода на запис, приходить з екрана згоди до старту гайду —
+        # це метадані для дослідника, а не хід сценарію.
+        self.respondent_name = ""  # type: str
         # Записи, зроблені на поточну відповідь і ще не прикріплені до ходу.
         self.pending_voice = []      # type: List[str]
 
@@ -298,26 +287,20 @@ class Session:
             self.turns.append(entry)
             return text
 
-        opening = self.guide.opening or _FALLBACK_PROBES[0]
-        text = "%s\n\n%s" % (self.space.persona.self_intro, opening)
+        # Ні сценарію, ні банку: лишається дослівне відкриття гайда — воно,
+        # на відміну від питань по темах, ніколи не потребувало моделі.
+        text = "%s\n\n%s" % (self.space.persona.self_intro, self.guide.opening)
         self.turns.append({"role": "interviewer", "text": text, "ts": _now(),
                            "topic_id": self.topic.id})
         return text
 
-    def answer(self, respondent_text: str,
-               finish_narrative: bool = False) -> InterviewerTurn:
-        """Респондент відповів — повертаємо наступну репліку інтервʼюера.
-
-        `finish_narrative` — людина сказала «я все розповіла». Без цієї дії
-        фаза розповіді триває, поки не вичерпаються ходи або поки людина двічі
-        не відповість коротко, і виглядає це як «нічого не відбувається».
-        """
+    def answer(self, respondent_text: str) -> InterviewerTurn:
+        """Респондент відповів — повертаємо наступну репліку інтервʼюера."""
         if self.done:
             raise RuntimeError("Інтервʼю вже завершено")
 
         # Чернетку закриваємо тут: далі рушій дасть інше питання, і галочки,
-        # зароблені на попередньому, до нього не стосуються. Саме зарахування
-        # відповіді робить `_resolve_items` — уже в стані рушія, надовго.
+        # зароблені на попередньому, до нього не стосуються.
         self.reset_draft()
 
         clean, masked = self.deidentifier.scrub(respondent_text)
@@ -349,19 +332,15 @@ class Session:
             return InterviewerTurn(utterance="", action="recorded",
                                    topic_id=entry["topic_id"], source="recorded")
 
-        if self.plan is not None:
-            if finish_narrative and self.phase_state.phase == phases.NARRATIVE:
-                # Достатньо позначити ходи вичерпаними: рушій сам перейде далі
-                # і сам визначить покриття тем за всією розповіддю.
-                self.phase_state.narrative_count = max(
-                    self.phase_state.narrative_count, self.guide.narrative_turns)
-            turn = self._ask_planned(clean)
-        elif self.bank is not None:
+        if self.bank is not None:
             turn = self._ask_bank()
-        elif self.structured:
-            turn = self._ask_llm()
         else:
-            turn = self._ask_text()
+            # Гайд без сценарію (немає ask_if_missed на жодній темі) і без
+            # банку — конфігурація, яку валідатор простору більше не
+            # пропускає (app/config/space.py). Якщо це все ж сталось —
+            # краще явна помилка тут, ніж мовчазний обрив розмови.
+            raise RuntimeError(
+                "Простір без сценарію і без банку реплік — немає, як продовжити розмову")
         turn = self._enforce(turn)
 
         # Порожня репліка — це мовчання інтервʼюера у фазі розповіді. Писати
@@ -430,24 +409,11 @@ class Session:
         self.incidents.append({"kind": "coverage_detected", "topics": covered, "ts": _now()})
         return covered
 
-    def _narrative_text(self) -> str:
-        """Усе, що респондент сказав у фазі вільної розповіді.
-
-        Потрібне, щоб визначити, які теми вже прозвучали — і не питати вдруге
-        (правило гайда «позначати подумки, що вже прозвучало»).
-        """
-        return " ".join(t["text"] for t in self.turns if t["role"] == "respondent")
-
     # Скільком пунктам максимум даємо оцінку за один хід. Кожен пункт — окремий
     # виклик моделі, тому межа є; але одна відповідь часто закриває два пункти
     # («Оля запропонувала за місяць до поїздки»), і не побачити цього означало б
     # питати про вже сказане.
     MAX_ITEM_CHECKS_PER_TURN = 3
-
-    # Скільком темам за один хід розповіді даємо оцінку «чи вже звучала». Так
-    # перевірка розтягується по ходах, а не стає десятисекундною паузою в мить,
-    # коли людина натиснула «Я все розповіла».
-    MAX_TOPIC_CHECKS_PER_TURN = 3
 
     # ОДИН пункт за виклик — і це про швидкість, а не про економію.
     #
@@ -458,33 +424,6 @@ class Session:
     # клієнт одразу малює його й питає наступний — галочки проступають одна за
     # одною, замість того щоб чекати всі разом.
     MAX_DRAFT_CHECKS_PER_CALL = 1
-
-    def _scan_narrative(self) -> None:
-        """Поступово зʼясовує, які теми вже прозвучали у розповіді.
-
-        Побічний і головний ефект: чекліст у фазі розповіді заповнюється
-        галочками **по ходу**, тому людина бачить, про що вже розповіла і про
-        що ми ще чекаємо почути.
-        """
-        if self.plan is None or self.phase_state.phase != phases.NARRATIVE:
-            return
-        pending = [topic for topic in self.guide.topics
-                   if topic.id not in self.phase_state.narrative_checked]
-        if not pending:
-            return
-        said = self._narrative_text()
-        if not said.strip():
-            return
-
-        batch = pending[: self.MAX_TOPIC_CHECKS_PER_TURN]
-        found = self._detect_coverage(said, batch)
-        if found is None:
-            return
-        for topic in batch:
-            self.phase_state.narrative_checked.append(topic.id)
-        for tid in found:
-            if tid not in self.phase_state.covered_in_narrative:
-                self.phase_state.covered_in_narrative.append(tid)
 
     def _said_for_topic(self, topic) -> str:
         """Текст, у якому взагалі має сенс шукати пункти ЦІЄЇ теми.
@@ -512,55 +451,6 @@ class Session:
             elif turn.get("topic_id") == topic.id:
                 parts.append(turn["text"])
         return " ".join(parts)
-
-    def _resolve_phase_items(self, last_answer: str) -> None:
-        """Оцінка очікуваного в розігріві й підсумку.
-
-        Окремо від `_resolve_items` (теми) з двох причин. По-перше, порядок:
-        тут оцінка потрібна до вибору ходу, там — після. По-друге, обсяг: пункти
-        розігріву й підсумку належать одному конкретному питанню, тому й
-        перевіряються проти відповіді на нього, а не проти всієї розмови.
-        """
-        if self.plan is None:
-            return
-        if self.phase_state.phase not in (phases.WARMUP, phases.CLOSING):
-            return
-        items, done = self._expectation()
-        if not items:
-            return
-        gaps = phases.open_expectations(items, done)
-        said = (last_answer or "").strip()
-        if not gaps or not said:
-            return
-        for index in gaps[: self.MAX_ITEM_CHECKS_PER_TURN]:
-            if not self._developed_enough(said, items[index]):
-                continue
-            if self._item_covered(said, items[index]):
-                if index not in done:
-                    done.append(index)
-                    self.incidents.append({
-                        "kind": "item_closed", "phase": self.phase_state.phase,
-                        "item": items[index], "ts": _now(),
-                    })
-
-    def _resolve_items(self, last_answer: str) -> None:
-        """Що з очікуваного ми вже почули.
-
-        Перевіряємо проти розповіді й проти відповідей у цій же темі, а не
-        проти однієї останньої репліки: пункт, що прозвучав у вільній розповіді,
-        не має лишатись відкритим. Але й не проти всього підряд — див.
-        `_said_for_topic`.
-        """
-        if self.phase_state.phase != phases.TOPICS:
-            return
-        topic = self.plan.topic_at(self.phase_state.topic_index)
-        if topic is None or not topic.must_learn:
-            return
-        gaps = phases.open_items(topic, self.phase_state)
-        if not gaps:
-            return
-
-        self._resolve_items_for(topic)
 
     def _resolve_items_for(self, topic) -> None:
         """Оцінка пунктів КОНКРЕТНОЇ теми. Окремо, бо цього просять двоє:
@@ -694,7 +584,8 @@ class Session:
         # галочка = «оце, що ви щойно сказали».
         #
         # Зараховане з попередніх ходів не губиться: воно вже в стані рушія
-        # (`_resolve_items` після надсилання) і показується як `done`.
+        # (`_resolve_items_for`, при поверненні до питання) і показується як
+        # `done`.
         if text:
             if self.phase_state.phase == phases.NARRATIVE:
                 self._evaluate_draft_narrative(text)
@@ -793,126 +684,6 @@ class Session:
         items = self.checklist()
         return bool(items) and all(item.get("done") for item in items)
 
-    def _ask_planned(self, last_answer: str) -> InterviewerTurn:
-        """Хід за сценарієм гайда.
-
-        Дослівні репліки гайда йдуть як є — їх не перевіряє guard і не
-        переформулює модель: це формулювання дослідника, вони вже вивірені.
-        Модель викликається лише там, де сценарій просить вільне уточнення.
-        """
-        # У фазі розповіді — сканування по ходу; у темах — оцінка пунктів.
-        self._scan_narrative()
-        # Розігрів і підсумок оцінюємо ДО вибору ходу — і це не деталь: рішення
-        # «доперепитати чи йти далі» залежить саме від того, чи почули ми
-        # очікуване від питання, на яке людина щойно відповіла. У темах
-        # навпаки: там оцінка мусить бути ПІСЛЯ (див. коментар нижче).
-        self._resolve_phase_items(last_answer)
-        action = self.plan.next_action(self.phase_state, last_answer,
-                                       self._narrative_text())
-        # Оцінюємо ПІСЛЯ вибору ходу, а не до нього. На ході, який переводить із
-        # розповіді в теми, фаза ще була «розповідь», і оцінка виходила одразу —
-        # тому пункти, що прозвучали в розповіді, лишались відкритими, а чекліст
-        # показував нулі там, де людина вже все сказала.
-        self._resolve_items(last_answer)
-
-        # Перевибір ходу тут стояв: якщо оцінка закривала тему до того, як
-        # звучало вже вибране питання рівня 1/2, воно ставало зайвим. Код
-        # прибраний, бо в цій гілці таких питань більше не буває: гайд із
-        # питаннями по темах іде сценарним режимом, де темп задає людина, а
-        # тут лишились тільки простори, де питання формулює модель.
-
-        if action.kind == phases.WRAP_UP:
-            return InterviewerTurn(
-                utterance=action.text or self.guide.closing,
-                topic_id=action.topic_id or self.topic.id,
-                action="wrap_up",
-                source=action.label,
-            )
-
-        if action.kind == phases.HOLD:
-            # Інтервʼюер мовчить: репліки немає, і в транскрипт вона не йде.
-            return InterviewerTurn(
-                utterance="",
-                topic_id=action.topic_id or self.topic.id,
-                action="hold",
-                source=action.label,
-            )
-
-        if action.kind == phases.FIXED:
-            return InterviewerTurn(
-                utterance=action.text,
-                topic_id=action.topic_id or self.topic.id,
-                action="probe",
-                source=action.label,
-            )
-
-        # Вільне уточнення: тут потрібна модель.
-        turn = (self._ask_text(focus=action.focus) if not self.structured
-                else self._ask_llm())
-        turn.topic_id = action.topic_id or turn.topic_id
-        turn.action = "probe"
-        turn.source = action.label
-        return turn
-
-    def _ask_text(self, focus: str = "") -> InterviewerTurn:
-        """Шлях для моделей без структурованого виводу.
-
-        Модель дає лише текст питання. `action` тут завжди "probe": рішення про
-        перехід до наступної теми й про завершення ухвалює `_enforce` за
-        лімітами — воно робило це й раніше, просто тепер це єдине джерело
-        рішень, а не підстраховка.
-        """
-        rejections = []
-        feedback = None
-        for _ in range(MAX_GUARD_RETRIES + 1):
-            system = build_system_compact(self.space, self.guide, self.topic,
-                                          self.prompt_version)
-            if focus:
-                # Прогалина, яку записав дослідник. Без цього модель питає
-                # «щось по темі», а нам треба закрити саме це.
-                system += ("\n\n**СПИТАЙ САМЕ ПРО ЦЕ:** %s\n"
-                           "Сформулюй питання так, щоб респондент розповів саме це, "
-                           "спираючись на його останню відповідь." % focus)
-            if feedback:
-                system += ("\n\n⛔ Попередню репліку відхилено: %s. Переформулюй: "
-                           "коротке відкрите питання про конкретний випадок."
-                           % "; ".join(feedback))
-            utterance = self.llm.respond_text(system, self._plain_messages())
-            problems = guard.check_turn(
-                utterance, self.space.domain_vocabulary, self.turns,
-                require_spoken_form=self.space.requires_spoken_form,
-            )
-            if not problems:
-                return InterviewerTurn(
-                    utterance=utterance,
-                    topic_id=self.topic.id,
-                    action="probe",
-                    guard_rejections=rejections,
-                )
-            rejections.append(problems)
-            feedback = problems
-            self.incidents.append({"kind": "guard_rejection", "utterance": utterance,
-                                   "problems": problems, "ts": _now()})
-
-        idx = len([i for i in self.incidents if i["kind"] == "guard_fallback"])
-        self.incidents.append({"kind": "guard_fallback", "ts": _now()})
-        return InterviewerTurn(
-            utterance=_FALLBACK_PROBES[idx % len(_FALLBACK_PROBES)],
-            topic_id=self.topic.id,
-            action="probe",
-            guard_rejections=rejections,
-            fallback_used=True,
-        )
-
-    def _plain_messages(self) -> List[Dict[str, Any]]:
-        """Розмова без службового блоку: він потрібен лише для рішень моделі,
-        а їх тут ухвалює ядро."""
-        return [
-            {"role": "assistant" if t["role"] == "interviewer" else "user",
-             "content": t["text"]}
-            for t in self.turns
-        ]
-
     def _ask_bank(self) -> InterviewerTurn:
         """Модель вибирає id репліки. Перевіряємо, що такий існує й записаний.
 
@@ -980,52 +751,6 @@ class Session:
             # Такого не має бути: придатність банку перевіряється до старту.
             raise RuntimeError("У банку немає записаних уточнень")
         return pool[len(self.incidents) % len(pool)]
-
-    def _ask_llm(self) -> InterviewerTurn:
-        rejections = []
-        feedback = None
-        for attempt in range(MAX_GUARD_RETRIES + 1):
-            data = self.llm.respond_json(
-                system=self.system,
-                messages=self._messages(feedback),
-                schema=TURN_SCHEMA,
-            )
-            utterance = (data.get("utterance") or "").strip()
-            problems = guard.check_turn(
-                utterance,
-                self.space.domain_vocabulary,
-                self.turns,
-                require_spoken_form=self.space.requires_spoken_form,
-                require_question=True,
-            )
-            if not problems:
-                return InterviewerTurn(
-                    utterance=utterance,
-                    topic_id=data.get("topic_id") or self.topic.id,
-                    action=data.get("action") or "probe",
-                    coverage_note=data.get("coverage_note", ""),
-                    guard_rejections=rejections,
-                )
-            rejections.append(problems)
-            feedback = problems
-            self.incidents.append({
-                "kind": "guard_rejection",
-                "attempt": attempt + 1,
-                "utterance": utterance,
-                "problems": problems,
-                "ts": _now(),
-            })
-
-        # Модель не змогла — не пускаємо в інтервʼю зіпсовану репліку.
-        idx = len([i for i in self.incidents if i["kind"] == "guard_fallback"])
-        self.incidents.append({"kind": "guard_fallback", "ts": _now()})
-        return InterviewerTurn(
-            utterance=_FALLBACK_PROBES[idx % len(_FALLBACK_PROBES)],
-            topic_id=self.topic.id,
-            action="probe",
-            guard_rejections=rejections,
-            fallback_used=True,
-        )
 
     # ── жорсткі правила ──────────────────────────────────────────────────
 
@@ -1148,6 +873,7 @@ class Session:
         session.finished_at = data.get("finished_at")
 
         session.voice_consent = bool(data.get("voice_consent"))
+        session.respondent_name = data.get("respondent_name") or ""
 
         state = data.get("state") or {}
         session.pending_voice = [str(x) for x in (state.get("pending_voice") or [])]
@@ -1467,6 +1193,7 @@ class Session:
             # Згода на запис голосу лишається в транскрипті: без неї записи
             # поруч не мають права існувати, і це має бути видно з файлу.
             "voice_consent": self.voice_consent,
+            "respondent_name": self.respondent_name,
             # Стан, без якого сесію не відновити після перезапуску (TD-5).
             "state": {"topic_index": self.topic_index, "probes": self.probes,
                       "phase": self.phase_state.to_dict(),
