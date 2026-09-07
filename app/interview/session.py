@@ -14,7 +14,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from ..config import space as space_config
 from ..config.space import Guide, SpaceConfig
 from ..providers.base import LLMProvider, ProviderError
 from . import phases
@@ -88,7 +87,7 @@ class Session:
         # Сценарій гайда: фази, рівні питань, драбина заглиблення. Ведеться
         # рушієм, а не моделлю — це рішення дослідника, зафіксовані в гайді.
         self.plan = phases.Plan(guide, self._detect_coverage) if guide.narrative_prompt or any(
-            t.ask_if_missed or t.ask_for_detail for t in guide.topics
+            t.ask_if_missed for t in guide.topics
         ) else None
         self.phase_state = phases.PhaseState()
         # ── сценарій vs банк, і різниця між ними принципова ─────────────
@@ -105,14 +104,10 @@ class Session:
         # немає: усе, що респондент чує, — або дослівний текст гайда, або
         # заздалегідь записана дослідником репліка.
         scripted = self.plan is not None and any(
-            topic.ask_if_missed or topic.ask_for_detail for topic in guide.topics)
+            topic.ask_if_missed for topic in guide.topics)
         self.script = self.plan.script() if scripted else []
         self.cursor = 0
 
-        # Чернетка: що людина вже проговорила на ЦЬОМУ питанні, але ще не
-        # надіслала. Тримається окремо від стану рушія навмисно — «Сказати
-        # заново» мусить прибирати галочки разом із текстом, інакше рушій
-        # вважав би пункт закритим, а в транскрипті не було б нічого.
         # Згода на запис голосу — окреме рішення респондента, не частина згоди
         # на інтервʼю. Голос неможливо деідентифікувати, тому питається прямо.
         self.voice_consent = False
@@ -121,18 +116,6 @@ class Session:
         self.respondent_name = ""  # type: str
         # Записи, зроблені на поточну відповідь і ще не прикріплені до ходу.
         self.pending_voice = []      # type: List[str]
-
-        self.draft_text = ""
-        self.draft_done = []         # type: List[Any]
-        # Що вже перевірили САМЕ для цього тексту. Текст виріс — перевіряємо
-        # знову (людина щойно догово́рила те, чого бракувало); той самий текст
-        # двічі не питаємо.
-        self.draft_checked = []      # type: List[Any]
-        self.draft_checked_text = ""
-        # Звідки починати наступний прогін. За один прогін перевіряємо не всі
-        # пункти, а наступні по колу: інакше десять тем розповіді коштували б
-        # десятків секунд на кожну паузу в мовленні.
-        self.draft_cursor = 0
 
     # ── стан ─────────────────────────────────────────────────────────────
 
@@ -299,16 +282,11 @@ class Session:
         if self.done:
             raise RuntimeError("Інтервʼю вже завершено")
 
-        # Чернетку закриваємо тут: далі рушій дасть інше питання, і галочки,
-        # зароблені на попередньому, до нього не стосуються.
-        self.reset_draft()
-
         clean, masked = self.deidentifier.scrub(respondent_text)
         entry = {"role": "respondent", "text": clean, "ts": _now(),
                  "topic_id": self.current_topic.id,
-                 # Фаза, у якій це сказано. Потрібна оцінювачу, щоб не
-                 # зараховувати тему чужою відповіддю (див. `_said_for_topic`),
-                 # і досліднику — щоб бачити, де в розмові що прозвучало.
+                 # Фаза, у якій це сказано — досліднику, щоб бачити, де в
+                 # розмові що прозвучало.
                  "phase": self.phase_state.phase if self.plan else ""}
         if self.pending_voice:
             # Записи цієї відповіді — у сам хід: дослідник мусить бачити, який
@@ -409,271 +387,9 @@ class Session:
         self.incidents.append({"kind": "coverage_detected", "topics": covered, "ts": _now()})
         return covered
 
-    # Скільком пунктам максимум даємо оцінку за один хід. Кожен пункт — окремий
-    # виклик моделі, тому межа є; але одна відповідь часто закриває два пункти
-    # («Оля запропонувала за місяць до поїздки»), і не побачити цього означало б
-    # питати про вже сказане.
-    MAX_ITEM_CHECKS_PER_TURN = 3
-
-    # ОДИН пункт за виклик — і це про швидкість, а не про економію.
-    #
-    # Оцінка одного пункта коштує ~1,3 с, і майже все це — обробка промпту, а не
-    # генерація (кап токенів нічого не змінює: зміряно 80 → 3 токени, різниці
-    # немає). Коли за один запит оцінювались три пункти, перша галочка
-    # зʼявлялась через ~4 с. Тепер відповідь повертається після першого пункта,
-    # клієнт одразу малює його й питає наступний — галочки проступають одна за
-    # одною, замість того щоб чекати всі разом.
-    MAX_DRAFT_CHECKS_PER_CALL = 1
-
-    def _said_for_topic(self, topic) -> str:
-        """Текст, у якому взагалі має сенс шукати пункти ЦІЄЇ теми.
-
-        Не «все, що людина сказала». Спостережено на повному прогоні: відповіді
-        на теми «Розподіл внеску» й «Гроші» закрили пункти тем «Розбіжна
-        інформація», «Розбіжність поглядів» і «Поведінка на місці» — і рушій не
-        спитав про них узагалі. Три теми дослідження зникли молча.
-
-        Береться:
-        — вільна розповідь і розігрів: там людина розповідає про все підряд, і
-          саме там пункт будь-якої теми може законно прозвучати;
-        — відповіді в межах цієї ж теми: рівень 1, рівень 2, уточнення.
-
-        Відповіді на ІНШІ теми — ні. Оцінювач надто щедрий (TD-31), і саме тут
-        його щедрість коштує найдорожче: не зайвого питання, а втраченої теми.
-        """
-        parts = []
-        for turn in self.turns:
-            if turn.get("role") != "respondent":
-                continue
-            phase = turn.get("phase")
-            if phase in (phases.WARMUP, phases.NARRATIVE, "", None):
-                parts.append(turn["text"])
-            elif turn.get("topic_id") == topic.id:
-                parts.append(turn["text"])
-        return " ".join(parts)
-
-    def _resolve_items_for(self, topic) -> None:
-        """Оцінка пунктів КОНКРЕТНОЇ теми. Окремо, бо цього просять двоє:
-        звичайний хід і повернення до раніше відповіданого питання."""
-        gaps = phases.open_items(topic, self.phase_state)
-        if not gaps:
-            return
-        said = self._said_for_topic(topic)
-        if not said.strip():
-            return
-
-        for index in gaps[: self.MAX_ITEM_CHECKS_PER_TURN]:
-            item = topic.must_learn[index]
-            if not self._developed_enough(said, item, topic):
-                # Коротка відповідь лишає пункт відкритим — рушій перепитає.
-                continue
-            closed = self._item_covered(said, item)
-            if closed is None:
-                # Не змогли оцінити — пункт лишається відкритим. Зайве уточнення
-                # дешевше за прогалину в даних.
-                continue
-
-            if closed:
-                done = self.phase_state.topic_items_done.setdefault(topic.id, [])
-                if index not in done:
-                    done.append(index)
-                    self.incidents.append({
-                        "kind": "item_closed", "topic_id": topic.id,
-                        "item": item, "ts": _now(),
-                    })
-
     @staticmethod
     def _word_count(text: str) -> int:
         return len(re.findall(r"\w+", text or ""))
-
-    def _developed_enough(self, said: str, item: str, topic=None) -> bool:
-        """Чи відповідь достатньо розгорнута, щоб зараховувати цей пункт.
-
-        Перевірка ДО моделі й дешева. Сенс не в тому, щоб не довіряти
-        оцінювачу, а в тому, що «Оля.» — це не відповідь на «хто запропонував
-        поїхати»: людина назвала слово, а не розповіла. Для дослідження таке
-        зарахування гірше за відкритий пункт, бо в транскрипті лишається слово,
-        з якого нічого не видно.
-
-        Дві межі:
-        — спільна нижня (`MIN_WORDS_TO_CREDIT`): одне-два слова не зараховують
-          нічого й ніколи;
-        — власна межа пункта (`needs_words` із гайда) — для пунктів, що просять
-          розповідь, а не факт. «Нас було шість» повна відповідь на «скільки вас
-          було», і завищена межа тут лише плодила б зайві питання.
-        """
-        count = self._word_count(said)
-        if count < space_config.MIN_WORDS_TO_CREDIT:
-            return False
-        needed = 0
-        if topic is not None:
-            needed = (topic.needs_words or {}).get(item, 0)
-        return count >= needed
-
-    def _item_covered(self, said: str, item: str):
-        """Чи можна дізнатися «item» зі сказаного. None — оцінити не вдалося.
-
-        Формулювання живе в `judge.py` разом із числами, які воно дало на
-        еталоні: те, що міряють, і те, що працює, мусить бути одним кодом.
-        """
-        return judging.ask(self.llm, judging.item_question(said, item))
-
-    def _expectation(self):
-        """Чого чекаємо на ЦЬОМУ питанні: (перелік, список зарахованих індексів).
-
-        Одне джерело для чекліста, живої перевірки й кнопки «надіслати»: коли
-        вони питали різні місця, кнопка розблоковувалась не тоді, коли галочки
-        ставали повними. Список зарахованих повертається **той самий об'єкт**
-        зі стану — у нього дописують.
-
-        Фаза розповіді сюди не входить: там очікуване — теми гайда, і вони
-        зараховуються за id, а не за індексом (див. `checklist`).
-        """
-        phase = self.phase_state.phase
-        if phase == phases.WARMUP:
-            return list(self.guide.opening_expects), self.phase_state.opening_items_done
-        if phase == phases.TOPICS:
-            topic = self.plan.topic_at(self.phase_state.topic_index) if self.plan else None
-            if topic is None or not topic.must_learn:
-                return [], []
-            return list(topic.must_learn), self.phase_state.topic_items_done.setdefault(
-                topic.id, [])
-        if phase == phases.CLOSING:
-            index = max(0, self.phase_state.closing_index - 1)
-            if index < len(self.guide.closing_expects):
-                return (list(self.guide.closing_expects[index]),
-                        self.phase_state.closing_items_done.setdefault(index, []))
-        return [], []
-
-    def reset_draft(self) -> None:
-        """Людина сказала заново — галочки чернетки йдуть разом із текстом."""
-        self.draft_text = ""
-        self.draft_done = []
-        self.draft_cursor = 0
-        self.draft_checked = []
-        self.draft_checked_text = ""
-
-    def evaluate_draft(self, text: str) -> Dict[str, Any]:
-        """Живе зарахування: людина ще говорить, галочки вже ставляться.
-
-        Не пише в транскрипт і не рухає рушій: це чернетка. Перевіряються лише
-        пункти, ще не зараховані, і не більше `MAX_DRAFT_CHECKS_PER_CALL` за
-        виклик — решта дочекається наступної паузи в мовленні.
-        """
-        text = (text or "").strip()
-        # Позначки лишаються, поки в тексті лишається те, за що їх поставили.
-        #
-        # Спершу тут стояла перевірка на префікс — і вона скидала все, щойно
-        # людина правила початок фрази або обривала слово: «Їздили в Карпа»
-        # знімало обидві зароблені галочки. Для людини це виглядало як «я це
-        # сказала, а воно забуло». Тепер міряємо перетин слів: правка й дописування
-        # позначок не чіпають, а «стерла все і сказала інше» — чіпає.
-        if not text or not self._same_answer(self.draft_text, text):
-            self.draft_done = []
-            self.draft_cursor = 0
-        if text != self.draft_checked_text:
-            # Текст інший — попередні «ні» більше не про нього.
-            self.draft_checked = []
-            self.draft_checked_text = text
-        self.draft_text = text
-
-        # Судимо ТІЛЬКИ те, що людина говорить зараз, а не все інтервʼю.
-        # Спершу я додавав до чернетки всі попередні відповіді — і галочка
-        # зʼявлялась на слові, що не мало до пункта стосунку: її насправді
-        # спричинив старий текст. Живий відгук мусить бути причинно чесним:
-        # галочка = «оце, що ви щойно сказали».
-        #
-        # Зараховане з попередніх ходів не губиться: воно вже в стані рушія
-        # (`_resolve_items_for`, при поверненні до питання) і показується як
-        # `done`.
-        if text:
-            if self.phase_state.phase == phases.NARRATIVE:
-                self._evaluate_draft_narrative(text)
-            else:
-                self._evaluate_draft_items(text)
-
-        return {
-            "checklist": self.checklist(),
-            "all_covered": self.all_expected_covered(),
-            # Чи лишились непроверені пункти для ЦЬОГО тексту. Клієнт бачить
-            # `more` і одразу питає наступний, не чекаючи нової паузи в мовленні.
-            "more": self._draft_has_more(),
-        }
-
-    # Скільки слів попередньої чернетки мусить лишитись, щоб вважати, що це та
-    # сама відповідь. Дві третини: людина може переписати фразу, але якщо від
-    # неї лишилась третина — це вже інша відповідь.
-    SAME_ANSWER_RATIO = 0.66
-
-    @staticmethod
-    def _same_answer(before: str, after: str) -> bool:
-        """Чи це та сама відповідь, лише доповнена або виправлена."""
-        old_words = re.findall(r"\w+", (before or "").lower())
-        if not old_words:
-            return True
-        new_words = set(re.findall(r"\w+", (after or "").lower()))
-        kept = sum(1 for word in old_words if word in new_words)
-        return kept >= len(old_words) * Session.SAME_ANSWER_RATIO
-
-    def _draft_pending(self):
-        """Пункти, які ще можна перевірити для поточного тексту чернетки."""
-        if self.phase_state.phase == phases.NARRATIVE:
-            covered = set(self.phase_state.covered_in_narrative) | set(self.draft_done)
-            return [t.id for t in self.guide.topics
-                    if t.id not in covered and t.id not in self.draft_checked]
-        items, done = self._expectation()
-        return [i for i in range(len(items))
-                if i not in done and i not in self.draft_done
-                and i not in self.draft_checked]
-
-    def _draft_has_more(self) -> bool:
-        return bool(self.draft_text) and bool(self._draft_pending())
-
-    def _evaluate_draft_items(self, full: str) -> None:
-        items, done = self._expectation()
-        topic = (self.plan.topic_at(self.phase_state.topic_index)
-                 if self.plan is not None and self.phase_state.phase == phases.TOPICS
-                 else None)
-        pending = self._draft_pending()
-        for index in self._draft_batch(pending):
-            self.draft_checked.append(index)
-            # Та сама межа, що й після надсилання: галочка не має зʼявлятись на
-            # одному слові, а потім зникати, коли рушій її не підтвердить.
-            if not self._developed_enough(full, items[index], topic):
-                continue
-            if self._item_covered(full, items[index]):
-                self.draft_done.append(index)
-
-    def _draft_batch(self, pending):
-        """Кого перевіряємо цього прогону: наступних по колу.
-
-        Кешувати «цього не почули» не можна: людина говорить далі, і саме та
-        фраза, якої бракувало, звучить наступною. Спостережено — дописаний текст
-        не закривав пункти, бо їх один раз перевірили й більше не питали.
-        """
-        if not pending:
-            self.draft_cursor = 0
-            return []
-        start = self.draft_cursor % len(pending)
-        order = pending[start:] + pending[:start]
-        batch = order[: self.MAX_DRAFT_CHECKS_PER_CALL]
-        self.draft_cursor = start + len(batch)
-        return batch
-
-    def _evaluate_draft_narrative(self, full: str) -> None:
-        pending_ids = self._draft_pending()
-        pending = [t for t in self.guide.topics if t.id in pending_ids]
-        batch = [pending[i] for i in self._draft_batch(list(range(len(pending))))]
-        if not batch:
-            return
-        for topic in batch:
-            self.draft_checked.append(topic.id)
-        found = self._detect_coverage(full, batch)
-        if found is None:
-            return
-        for topic in batch:
-            if topic.id in found and topic.id not in self.draft_done:
-                self.draft_done.append(topic.id)
 
     def all_expected_covered(self) -> bool:
         """Чи почули ми все, чого чекали на цьому питанні.
@@ -901,16 +617,6 @@ class Session:
             session.coverage[topic.id] = list(saved_coverage.get(topic.id) or [])
         return session
 
-    def _open_items_report(self) -> Dict[str, List[str]]:
-        if self.plan is None:
-            return {}
-        report = {}
-        for topic in self.guide.topics:
-            gaps = phases.open_items(topic, self.phase_state)
-            if gaps:
-                report[topic.id] = [topic.must_learn[i] for i in gaps]
-        return report
-
     def history(self) -> List[Dict[str, Any]]:
         """Питання й відповіді, які вже прозвучали.
 
@@ -1006,11 +712,6 @@ class Session:
             "kind": "answer_extended", "turn": index,
             "topic_id": entry["topic_id"], "ts": _now(),
         })
-
-        # Пункти тієї теми могли щойно закритись — переоцінюємо саме її.
-        topic = next((t for t in self.guide.topics if t.id == entry["topic_id"]), None)
-        if topic is not None and topic.must_learn:
-            self._resolve_items_for(topic)
         return {"turn": entry, "topic_id": entry["topic_id"]}
 
     def answer_depth_stats(self) -> Dict[str, Any]:
@@ -1081,27 +782,33 @@ class Session:
         return self._legacy_checklist()
 
     def _legacy_checklist(self) -> List[Dict[str, Any]]:
-        """Старий чекліст із позначками — для просторів без плоского сценарію.
+        """Шпаргалка для просторів без плоского сценарію.
 
-        Лишається робочим, бо простір без `ask_if_missed`/`ask_for_detail`
-        сценарію не має й веде розмову старим шляхом. У «подорожах» цей код не
-        працює: там сценарій є.
+        Лишається робочим, бо простір без `ask_if_missed` сценарію не має й
+        веде розмову старим шляхом. У «подорожах» цей код не працює: там
+        сценарій є. Той самий принцип, що й у `checklist()`: перелік без
+        позначок «зараховано» — вирішує людина.
         """
         if self.plan is None:
             return []
         phase = self.phase_state.phase
 
         if phase == phases.NARRATIVE:
-            covered = set(self.phase_state.covered_in_narrative) | set(self.draft_done)
             # `label`, а не `title`: людині показуємо людські слова, а фаховий
             # ярлик карти тем лишається для звітів і транскрипту.
-            return [{"text": topic.label, "done": topic.id in covered}
-                    for topic in self.guide.topics]
-
-        items, done = self._expectation()
-        marked = set(done) | set(self.draft_done)
-        return [{"text": item, "done": index in marked}
-                for index, item in enumerate(items)]
+            return [{"text": topic.label, "done": False} for topic in self.guide.topics]
+        if phase == phases.WARMUP:
+            return [{"text": item, "done": False} for item in (self.guide.opening_expects or [])]
+        if phase == phases.TOPICS:
+            topic = self.plan.topic_at(self.phase_state.topic_index)
+            items = (topic.must_learn or []) if topic is not None else []
+            return [{"text": item, "done": False} for item in items]
+        if phase == phases.CLOSING:
+            index = max(0, self.phase_state.closing_index - 1)
+            items = (self.guide.closing_expects[index]
+                     if index < len(self.guide.closing_expects) else [])
+            return [{"text": item, "done": False} for item in items]
+        return []
 
     def progress_info(self) -> Dict[str, Any]:
         if self.script:
@@ -1148,13 +855,13 @@ class Session:
             covered = len(self.covered_topics)
             info = {
                 "phase": "topics",
-                "section": "Уточнення",
+                "section": "Теми",
                 "section_index": 0,
-                "sections": [{"title": "Уточнення", "phase": "topics",
+                "sections": [{"title": "Теми", "phase": "topics",
                              "total": total, "answered": covered, "current": True}],
                 "detail": "тема %d з %d" % (min(covered + 1, total), total),
                 "section_fraction": round(covered / float(total), 3),
-                "label": "Уточнення",
+                "label": "Теми",
                 "fraction": round(covered / float(total), 3),
                 "asked": asked,
                 "topic_index": self.topic_index,
@@ -1188,8 +895,6 @@ class Session:
             "completed": self.done,
             "turns": self.turns,
             "coverage": self.coverage,
-            # Що так і не зʼясували: прямий матеріал для «Нотаток для себе».
-            "open_items": self._open_items_report(),
             # Згода на запис голосу лишається в транскрипті: без неї записи
             # поруч не мають права існувати, і це має бути видно з файлу.
             "voice_consent": self.voice_consent,

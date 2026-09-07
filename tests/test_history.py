@@ -17,7 +17,6 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.config.space import load_space_dir
-from app.interview import phases
 from app.interview.session import Session
 from app.providers.base import LLMProvider
 
@@ -35,16 +34,6 @@ class Quiet(LLMProvider):
         content = messages[-1]["content"] if messages else ""
         if "одним словом" in content.lower():
             return "ні"
-        return "А що саме там сталося?"
-
-
-class Generous(Quiet):
-    """Зараховує все — щоб побачити, що доповнення переоцінює тему."""
-
-    def respond_text(self, system, messages):
-        content = messages[-1]["content"] if messages else ""
-        if "одним словом" in content.lower():
-            return "так"
         return "А що саме там сталося?"
 
 
@@ -111,27 +100,21 @@ class TestHistory(unittest.TestCase):
                  session.phase_state.narrative_count)
         self.assertEqual(before, after)
 
-    def test_append_reopens_evaluation_of_that_topic(self):
-        """Доповнення могло закрити пункт — тему треба переоцінити."""
-        session = Session(self.space, self.guide, Generous())
-        session.start()
-        # Доходимо до першого питання теми: у сценарному режимі це кроки.
-        while not session.current_question().get("topic_id"):
-            session.answer("Та все, більше нічого не пригадаю.")
-            session.go(1)
-            session.show_current()
-        topic_id = session.current_question()["topic_id"]
-        topic = next(t for t in self.guide.topics if t.id == topic_id)
+    def test_append_only_adds_a_turn_without_evaluation(self):
+        """Без судження: доповнення лише дописує хід, нічого не переоцінює."""
+        session = self._started()
         question_index = max(i for i, t in enumerate(session.turns)
                              if t["role"] == "interviewer")
-        session.phase_state.topic_items_done[topic.id] = []
+        turns_before = len(session.turns)
 
-        session.append_to_answer(
+        result = session.append_to_answer(
             question_index,
             "Розповім докладно: запропонувала Оля ще в грудні, і за два дні "
             "ми вже скидались на завдаток, тобто вийшло швидко.")
-        self.assertTrue(session.phase_state.topic_items_done.get(topic.id),
-                        "доповнення не переоцінило тему")
+
+        self.assertEqual(len(session.turns), turns_before + 1)
+        self.assertEqual(session.turns[-1]["added_to"], question_index)
+        self.assertEqual(result["topic_id"], session.turns[-1]["topic_id"])
 
     def test_append_rejects_bad_index_and_empty_text(self):
         session = self._started()

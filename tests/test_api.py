@@ -199,32 +199,6 @@ class TestApi(unittest.TestCase):
         self.assertEqual(saved["prompt_version"], "interviewer.v1")
         self.assertTrue(saved["completed"])
 
-    def test_draft_returns_checklist_without_touching_transcript(self):
-        """Жива перевірка не пише в транскрипт: це чернетка, не відповідь."""
-        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
-        sid = started["session_id"]
-        live = os.path.join(store_files.LIVE_DIR, "%s.json" % sid)
-        before = json.load(open(live, encoding="utf-8"))["turns"]
-
-        status, data = post(self.base, "/api/draft",
-                           {"session_id": sid, "text": "Ми поїхали в Карпати."})
-        self.assertEqual(status, 200)
-        self.assertIn("checklist", data)
-        self.assertIn("all_covered", data)
-        after = json.load(open(live, encoding="utf-8"))["turns"]
-        self.assertEqual(len(before), len(after))
-
-    def test_draft_reset_accepted(self):
-        _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
-        sid = started["session_id"]
-        status, data = post(self.base, "/api/draft", {"session_id": sid, "reset": True})
-        self.assertEqual(status, 200)
-        self.assertFalse(data["all_covered"])
-
-    def test_draft_unknown_session_is_404(self):
-        status, _ = post(self.base, "/api/draft", {"session_id": "нема", "text": "щось"})
-        self.assertEqual(status, 404)
-
     def test_answering_finished_session_rejected(self):
         _, started = post(self.base, "/api/start", {"respondent_name": "Тестова Особа"})
         sid = started["session_id"]

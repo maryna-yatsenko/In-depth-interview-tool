@@ -187,19 +187,14 @@
     }).catch(function (err) { el("guide-error").textContent = err.message; });
   }
 
-  /* Питання — картка на тему гайда: текст, який почує респондент
-     (ask_if_missed — рівень 1; ask_for_detail — рівень 2, якщо тему лише
-     згадали побіжно, необовʼязково), і чекліст must_learn під ним. Раніше
-     тут був один текстовий блок, де редагувались лише title/must_learn, а
-     саме формулювання питання (ask_if_missed/ask_for_detail) не було видно
-     й не редагувалось узагалі — ці два поля тепер саме тому тут головні.
+  /* Питання — картка на тему гайда: дослівний текст, який почує респондент
+     (ask_if_missed — єдине питання теми), і чекліст must_learn під ним.
 
      Ключ (id) не редагується руками — лишається як є для наявних тем,
      генерується за порядком карток для нових (як і раніше генерувався для
      нового простору: «topic-1», «topic-2», …). Поля, яких немає в картці
-     (goal, max_probes, shown_as, needs_detail на пункті), — з `_original`,
-     який зберігаємо на самій картці при рендері, щоб збереження не змило
-     те, чого форма не показує. */
+     (goal, max_probes, shown_as), — з `_original`, який зберігаємо на самій
+     картці при рендері, щоб збереження не змило те, чого форма не показує. */
   function mustLearnText(item) {
     return (item && typeof item === "object") ? (item.text || "") : (item || "");
   }
@@ -597,30 +592,22 @@
     return Array.prototype.map.call(document.querySelectorAll(".topic-card"), function (card, index) {
       var original = card._original || {};
       var askIfMissed = card.querySelector(".topic-question-input").value.trim();
-      // За текстом, а не позицією: пункти можна перетягувати (попап вище),
-      // і після цього той самий пункт стоїть на іншому індексі. Порівняння
-      // "той самий індекс" тоді помилково вирішувало б, що текст змінився,
-      // і губило б позначку needs_detail (просить розгорнуту відповідь),
-      // якої ця форма не редагує.
-      var originalByText = {};
-      (original.must_learn || []).forEach(function (item) {
-        var text = mustLearnText(item);
-        if (text && !(text in originalByText)) originalByText[text] = item;
-      });
+      // Пункти чекліста — завжди прості рядки: рушій більше не судить, чи
+      // відповідь достатньо розгорнута, тож обʼєктна форма (needs_detail/
+      // min_words) тут не потрібна навіть для вже наявних пунктів.
       var mustLearn = Array.prototype.map.call(
         card.querySelectorAll(".must-learn-item input"),
-        function (input) {
-          var text = input.value.trim();
-          return text && (text in originalByText) ? originalByText[text] : text;
-        }
-      ).filter(function (item) { return mustLearnText(item); });
+        function (input) { return input.value.trim(); }
+      ).filter(Boolean);
 
-      return Object.assign({}, original, {
+      var topic = Object.assign({}, original, {
         id: original.id || ("topic-" + (index + 1)),
         title: askIfMissed.slice(0, 40) || ("Питання " + (index + 1)),
         ask_if_missed: askIfMissed,
         must_learn: mustLearn
       });
+      delete topic.ask_for_detail;
+      return topic;
     });
   }
 
@@ -635,6 +622,10 @@
       feedback_style: el("guide-feedback-style").value,
       topics: collectTopicsFromCards()
     });
+    // Застарілі поля колишньої «драбини заглиблення»: рушій їх більше не
+    // читає, і адмінка не має тихо носити їх далі з кожним збереженням.
+    delete payload.deepening;
+    delete payload.generalization_markers;
     el("guide-error").textContent = "";
     post("/api/admin/guide", { space: state.space, guide: state.guide, data: payload })
       .then(function () {

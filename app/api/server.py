@@ -373,8 +373,6 @@ def make_handler(
                 self._resume(payload)
             elif path == "/api/answer":
                 self._answer(payload)
-            elif path == "/api/draft":
-                self._draft(payload)
             elif path == "/api/step":
                 self._step(payload)
             elif path == "/api/finish":
@@ -411,10 +409,6 @@ def make_handler(
                     # Чи взагалі пропонувати запис голосу. Сама згода — окреме
                     # рішення респондента на екрані згоди.
                     "record_voice": bool(space.interface.get("record_voice", False)),
-                    # Нижче цього не зараховуємо нічого. Клієнт мусить це знати,
-                    # щоб сказати людині, чому нічого не зарахувалось, а не
-                    # лишати її гадати.
-                    "min_words_to_credit": space_module.MIN_WORDS_TO_CREDIT,
                 },
                 "repertoire": space.repertoire,
                 "topics_total": len(guide.topics),
@@ -677,51 +671,6 @@ def make_handler(
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-
-        def _draft(self, data: Dict[str, Any]):
-            """Жива перевірка: людина ще говорить, а галочки вже ставляться.
-
-            Транскрипт не чіпається — це чернетка. `reset` приходить, коли
-            людина сказала заново: галочки мусять зникнути разом із текстом.
-            """
-            session_id = data.get("session_id") or ""
-            try:
-                session = self._store.get(session_id)
-            except (KeyError, ValueError):
-                self._send_json({"error": "сесію не знайдено"}, 404)
-                return
-            if session.done:
-                self._send_json({"error": "інтервʼю вже завершено"}, 409)
-                return
-
-            if data.get("reset"):
-                # Людина сказала «цього не було» — отже цього не має бути й на
-                # диску. Позначки «скасовано» тут недостатньо: це її голос.
-                if session.pending_voice:
-                    voice_files.delete_clips(session.session_id, session.pending_voice)
-                    session.pending_voice = []
-                session.reset_draft()
-                self._send_json({
-                    "checklist": self._checklist(session),
-                    "all_covered": self._all_covered(session),
-                # Записи поточної відповіді: людина мусить мати змогу
-                # переслухати їх навіть після перезавантаження сторінки.
-                "voice": list(session.pending_voice),
-                })
-                return
-
-            try:
-                result = session.evaluate_draft(data.get("text") or "")
-            except ProviderError as exc:
-                # Живу перевірку можна не зробити: галочки просто зʼявляться
-                # після надсилання. Обривати через це відповідь не будемо.
-                self._send_json({"error": "модель недоступна: %s" % exc,
-                                 "retryable": True}, 503)
-                return
-            # Записи поточної відповіді: щоб «Мій голос» працював і після
-            # перезавантаження сторінки, коли blob-и в браузері вже зникли.
-            result["voice"] = list(session.pending_voice)
-            self._send_json(result)
 
         def _step(self, data: Dict[str, Any]):
             """Крок сценарієм: наступне або попереднє питання.

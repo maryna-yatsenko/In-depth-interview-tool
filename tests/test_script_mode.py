@@ -53,10 +53,10 @@ class TestScriptedFlow(unittest.TestCase):
         self.assertTrue(script)
         self.assertEqual(script[0]["id"], "opening")
         self.assertEqual(script[1]["id"], "narrative")
-        # Обидва рівні питань теми стоять по порядку: зайве людина пропускає.
+        # Рівно одне питання на тему — дослівно `ask_if_missed`.
         ids = [item["id"] for item in script]
         self.assertIn("idea/1", ids)
-        self.assertIn("idea/2", ids)
+        self.assertNotIn("idea/2", ids)
         self.assertTrue(ids[-1].startswith("closing/"))
 
     def test_model_is_not_asked_anything(self):
@@ -136,7 +136,7 @@ class TestScriptedFlow(unittest.TestCase):
         info = self.session.progress_info()
         self.assertIn("питання 1 з %d" % len(self.session.script), info["detail"])
         self.assertEqual([s["title"] for s in info["sections"]],
-                         ["Початок", "Розповідь", "Уточнення", "Підсумок"])
+                         ["Початок", "Розповідь", "Теми", "Підсумок"])
         self.assertTrue(info["scripted"])
 
     def test_sections_carry_question_counts_and_progress(self):

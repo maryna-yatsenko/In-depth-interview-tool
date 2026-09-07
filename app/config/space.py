@@ -52,9 +52,9 @@ class SpaceConfig:
     # людину не можна заводити в тупик.
     interface: Dict[str, Any] = field(default_factory=dict)
     # Репертуар інтервʼюера: "free" — питання дослівно з гайда (сценарій,
-    # `Topic.ask_if_missed`/`ask_for_detail`); "bank" — модель лише вибирає
-    # репліку з набору, записаного людським голосом. В обох випадках модель
-    # не формулює текст питання сама.
+    # `Topic.ask_if_missed`); "bank" — модель лише вибирає репліку з набору,
+    # записаного людським голосом. В обох випадках модель не формулює текст
+    # питання сама.
     repertoire: str = "free"
     # Чернетка = простір створений із шаблону і ще не заповнений. Інтервʼю з
     # такого простору не стартує: інакше реальному респонденту дістанеться
@@ -80,22 +80,10 @@ class Topic:
     # гайдом, тому тут лишається фахова мова («Розбіжна інформація»).
     title: str
     must_learn: List[str] = field(default_factory=list)   # що треба зʼясувати
-    # Скільки слів мусить мати відповідь, щоб пункт можна було зарахувати:
-    # {текст пункта: мінімум слів}. Заповнюється лише для пунктів, які просять
-    # РОЗПОВІДЬ, а не факт.
-    #
-    # Різниця тут не косметична. «Нас було шість» — три слова й повна відповідь
-    # на «скільки вас було». «Та посварились» — три слова й порожнеча на
-    # «випадок, коли ви не погоджувались»: немає ні з чого почалось, ні чим
-    # закінчилось. Одна межа на всі пункти неминуче або пропускає порожнє, або
-    # відкидає повне — тому межу задає сам пункт у гайді.
-    needs_words: Dict[str, int] = field(default_factory=dict)
-    max_probes: int = 4                                   # ліміт уточнень (жорсткий)
-    # Двоуровнева структура з реальних гайдів: рівень 1 — якщо тему не згадали
-    # взагалі; рівень 2 — якщо згадали побіжно і треба довести до конкретики.
-    # Це не те саме, що «ще одне уточнення»: у гайда під це різні формулювання.
+    max_probes: int = 4                                   # ліміт уточнень (жорсткий, bank-режим)
+    # Дослівне питання теми — те, що респондент чує. Єдине питання на тему:
+    # інтервʼюер не ставить нічого понад нього.
     ask_if_missed: str = ""
-    ask_for_detail: str = ""
     goal: str = ""
 
     @property
@@ -129,11 +117,6 @@ class Guide:
     closing_questions: List[str] = field(default_factory=list)
     closing_expects: List[List[str]] = field(default_factory=list)
     opening_expects: List[str] = field(default_factory=list)
-    # Правило заглиблення: коли респондент узагальнює («завжди», «якось так»),
-    # інтервʼюер веде його до конкретики фіксованими сходинками. У гайдах це
-    # окреме правило «тримати в голові на всі теми».
-    deepening: List[str] = field(default_factory=list)
-    generalization_markers: List[str] = field(default_factory=list)
     # Екран подяки: як питати респондента про сам досвід проходження —
     # окремо від дослідження. Рівень гайда, а не простору: тон може
     # відрізнятись між гайдами того самого простору.
@@ -227,39 +210,14 @@ def load_space(path: str) -> SpaceConfig:
     )
 
 
-# Скільки слів вимагати за замовчуванням від пункта, позначеного як розповідь.
-# Приблизно два речення: менше — це ще не випадок, а згадка про випадок.
-DEFAULT_DETAIL_WORDS = 12
-
-# Нижче цього не зараховуємо НІЧОГО, хоч би що сказала модель. Одне-два слова —
-# це не відповідь, а слово: «Оля.», «Так.», «Було.»
-MIN_WORDS_TO_CREDIT = 3
-
-
 def _item_text(item) -> str:
-    """Пункт `must_learn` — або рядок, або обʼєкт із вимогою до обсягу."""
+    """Пункт `must_learn` — або рядок, або обʼєкт із текстом («text»/«learn»)."""
     if isinstance(item, dict):
         text = item.get("text") or item.get("learn") or ""
         if not text:
             raise ConfigError("Пункт must_learn без тексту: %r" % (item,))
         return text
     return str(item)
-
-
-def _item_requirements(items) -> Dict[str, int]:
-    """{текст пункта: мінімум слів} — лише для пунктів, що просять розповідь."""
-    out = {}
-    for item in items or []:
-        if not isinstance(item, dict):
-            continue
-        text = _item_text(item)
-        if item.get("needs_detail"):
-            words = int(item.get("min_words", DEFAULT_DETAIL_WORDS))
-            if words < 1:
-                raise ConfigError(
-                    "min_words для пункта «%s» мусить бути більше нуля" % text)
-            out[text] = words
-    return out
 
 
 def load_guide(path: str, require_scripted: bool = False) -> Guide:
@@ -287,10 +245,8 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
                 id=raw["id"],
                 title=raw["title"],
                 must_learn=[_item_text(x) for x in raw.get("must_learn", [])],
-                needs_words=_item_requirements(raw.get("must_learn", [])),
                 max_probes=int(raw.get("max_probes", 4)),
                 ask_if_missed=raw.get("ask_if_missed", ""),
-                ask_for_detail=raw.get("ask_for_detail", ""),
                 goal=raw.get("goal", ""),
                 shown_as=raw.get("shown_as", ""),
             )
@@ -349,8 +305,6 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
         feedback_prompt=data.get("feedback_prompt", ""),
         feedback_style=feedback_style,
         opening_expects=data.get("opening_expects", []),
-        deepening=data.get("deepening", []),
-        generalization_markers=data.get("generalization_markers", []),
     )
 
 

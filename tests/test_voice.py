@@ -186,18 +186,6 @@ class TestVoiceApiNeedsConsent(unittest.TestCase):
         _, resumed = post_json(self.base, "/api/resume", {"session_id": sid})
         self.assertEqual(resumed["voice"], [body["clip"]])
 
-        _, draft = post_json(self.base, "/api/draft",
-                             {"session_id": sid, "text": "щось сказане"})
-        self.assertEqual(draft["voice"], [body["clip"]])
-
-    def test_saying_it_again_deletes_the_clip(self):
-        sid, _ = self._start(True)
-        _, body = post_bytes(self.base, "/api/voice?session_id=%s" % sid, CLIP)
-        post_json(self.base, "/api/draft", {"session_id": sid, "reset": True})
-        self.assertEqual(voice_files.list_clips(sid), [])
-        status, _ = get_raw(self.base, body["url"])
-        self.assertEqual(status, 404)
-
     def test_unknown_session_is_404(self):
         # Ідентифікатор ASCII навмисно: кириличний в URL urllib не закодує, і
         # тест упав би на власній помилці, а не на поведінці сервера.

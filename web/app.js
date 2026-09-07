@@ -64,9 +64,6 @@
     audioFinish: null,    // прибирання blob-у, якщо зупинили ззовні
     lastAudioUrl: null,   // адреса запису поточного питання (людський голос)
     expectedWords: 15,
-    // Нижче цієї межі рушій не зараховує нічого: одне-два слова — це не
-    // відповідь, а слово. Клієнт знає межу, щоб назвати людині причину.
-    minWordsToCredit: 3,
     audioAvailable: false,
     autoplay: false,      // за замовчуванням питання лишається текстом
     prefetch: null,       // {url, blobUrl} — готове аудіо поточного питання
@@ -1366,8 +1363,6 @@
       state.autoplay = !!(space.interface && space.interface.autoplay);
       state.expectedWords = (space.interface && space.interface.expected_words) || 15;
       state.recordVoice = !!(space.interface && space.interface.record_voice);
-      state.minWordsToCredit =
-        (space.interface && space.interface.min_words_to_credit) || 3;
       // Галочку показуємо лише там, де простір справді просить запис.
       el("record-consent").classList.toggle("hidden", !state.recordVoice);
       // Де запис пропонують — без згоди на нього не почати: голос неможливо
