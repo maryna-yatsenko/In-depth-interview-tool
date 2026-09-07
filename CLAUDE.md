@@ -42,6 +42,7 @@ Voice-based інтерв'юер для якісних досліджень: LLM 
 | `web/` | Статика: сторінка респондента (`index.html`, `app.js`, `audio.js`, `segments.js`, `styles.css`) і панель дослідника (`admin.html`, `admin.js`, `admin.css`) |
 | `public/` | Симлінки на файли з `web/` для статичної роздачі на Vercel |
 | `spaces/` | Конфіги досліджень (`space.json` + `guides/`). У git — лише `example/` (референсний фікстур) і `travel/` (реальне дослідження); решта — локальні, гітигноряться |
+| `.trash/` (поряд зі `spaces/`) | Кошик адмінки — видалені дослідження перед остаточним видаленням (`app/api/admin.py`: `_trash_dir`/`trash_space`). Локальний стан, гітигнориться |
 | `docs/ai/` | Живі документи: план архітектури, продуктовий контекст, задачі, каталог едж-кейсів, технічний борг |
 | `tests/` | Юніт-тести (`python3 -m unittest discover -s tests -q`) |
 | `api/index.py`, `vercel.json`, `.vercelignore`, `requirements.txt` | Vercel-деплой |
