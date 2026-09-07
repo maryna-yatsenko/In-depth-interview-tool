@@ -18,6 +18,11 @@
   /* Верхній стоп градієнта .primary/.talk — той самий фіксований
      насичений фіолетовий, що й --accent-strong в адмінці. */
   --accent-strong: #8b71ee;
+  /* Індикатор "поточний крок" (сходинки прогресу): заливка суцільна, тому
+     мусить лишатись насиченою поруч із --check, а не тьмяніти як --accent
+     у темній темі (там він блідий — вивірений під ТЕКСТ, не під заливку).
+     У світлій темі --accent і так насичений — тут просто дублює його. */
+  --accent-now: var(--accent);
   --on-accent: #fff;
   --heading: #000;
   --bg: #f5f4f2;
@@ -45,6 +50,7 @@
     /* Фіксований насичений фіолетовий (той самий --primary-fill, що в
        адмінці) — саме для заливки кнопок, не для --accent-як-тексту вище. */
     --btn-fill: #5a33b5;
+    --accent-now: var(--accent-strong);
     --on-accent: #fff;
     --heading: #fff;
     --bg: #141415;
@@ -69,6 +75,7 @@
 :root[data-theme="dark"] {
   --accent: #c7b8f9;
   --btn-fill: #5a33b5;
+  --accent-now: var(--accent-strong);
   --on-accent: #fff;
   --heading: #fff;
   --bg: #141415;
@@ -86,6 +93,7 @@
 :root[data-theme="light"] {
   --accent: #5a33b5;
   --btn-fill: var(--accent);
+  --accent-now: var(--accent);
   --on-accent: #fff;
   --heading: #000;
   --bg: #f5f4f2;
@@ -232,7 +240,14 @@ h1 { font-size: 34px; font-weight: 700; line-height: 1.15; letter-spacing: -.01e
   border-radius: var(--radius);
   padding: 14px 16px;
 }
-.name-field input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Той самий рецепт фокусу, що й на полях в адмінці (input:focus,
+   web/admin.css): зміна кольору рамки + мʼяке сяйво навколо, а не суцільний
+   outline — форма респондента й панель дослідника мусять відчуватись одним
+   інструментом. */
+.name-field input:focus {
+  outline: none; border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+}
 
 /* 48px — стандартна висота найбільших (основних) кнопок: зручна ціль для
    пальця й водночас однакова по всьому інструменту. display:flex + height
@@ -440,7 +455,11 @@ textarea {
   padding: 14px 16px;
   resize: vertical;
 }
-textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Той самий рецепт, що й у .name-field input:focus вище / в адмінці. */
+textarea:focus {
+  outline: none; border-color: var(--accent-strong);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+}
 
 .controls { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
 
@@ -482,17 +501,22 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   display: block; height: 100%; width: 0;
   background: var(--line); transition: width .4s ease;
 }
-/* Пройдене — приглушене, але видиме: людина мусить бачити, що вже позаду.
-   Кружечок — зелений (--check, той самий колір "почуте/підтверджено", що
-   й .history-a.added): він один показує "цей етап дійсно завершено", а не
-   просто "не поточний", тому лишається кольоровим навіть на тлі приглушеної
-   смужки й підпису. */
+/* Пройдене — той самий зелений (--check, той самий колір "почуте/
+   підтверджено", що й .history-a.added) і на кружечку, і на смужці: єдиний
+   відтінок читається як "цей етап дійсно завершено" відразу, без різниці
+   між кружечком і заповненням. */
 .step.done .step-dot { background: var(--check); }
-.step.done .step-track > i { background: var(--check); opacity: .5; }
+.step.done .step-track > i { background: var(--check); }
 .step.done .step-name { color: var(--muted); }
-/* Поточний крок — єдине акцентоване місце в цій смузі. */
-.step.now .step-dot { background: var(--accent); }
-.step.now .step-track > i { background: var(--accent); }
+/* Поточний крок — єдине акцентоване місце в цій смузі. Заливка кружечка й
+   смужки — не --accent: у темній темі це блідий лавандовий, вивірений для
+   ТЕКСТУ на темному тлі (контраст), і як суцільна заливка поруч із яскравим
+   --check він губився, не читався як акцент. --accent-now окремий —
+   насичений в обох темах, той самий --accent-strong, що вже несе цю роль
+   у заливці кнопок. У світлій темі --accent і так насичений — там лишається
+   без змін. */
+.step.now .step-dot { background: var(--accent-now); }
+.step.now .step-track > i { background: var(--accent-now); }
 .step.now .step-name { color: var(--text); font-weight: 500; }
 .progress-detail { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
 .progress-detail:empty { display: none; }
