@@ -1780,3 +1780,16 @@ body.admin .space-menu-item.is-danger:hover, body.admin .space-menu-item.is-dang
 /* Замість іконки папки: літера-ініціал лише у згорнутій панелі. */
 .space-initial { display: none; font-weight: 600; font-size: 14px; color: var(--heading); line-height: 1; }
 .rail-collapsed .space-initial { display: block; }
+
+/* «Очистити все» — у нижній панелі дій, окремо від «Зберегти гайд» у правому
+   кутку: руйнівна дія не сусідить із головною. */
+.actions.sticky .clear-all-right { margin-left: auto; }
+
+/* Хрестик пункту чекліста — така сама візуальна вага, як ручка перетягування
+   ліворуч: без рамки й фону, приглушений; виразнішає, коли курсор у рядку. */
+.must-learn-remove, .must-learn-remove:hover:not(:disabled) {
+  background: transparent; border-color: transparent; box-shadow: none;
+}
+.must-learn-remove { color: var(--muted); opacity: .35; transition: opacity .15s ease, color .15s ease; }
+.must-learn-item:hover .must-learn-remove { opacity: 1; }
+.must-learn-remove:hover:not(:disabled) { opacity: 1; color: var(--danger); }
