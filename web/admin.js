@@ -1549,32 +1549,186 @@
   });
 
   /* ── Імпорт списку питань з файлу ────────────────────────────────────
-     .txt/.md — одне питання в рядку (маркери й нумерацію зрізаємо);
-     .csv — перша колонка; .json — масив рядків або обʼєктів {text, expects}.
+     Файл може нести й блоки (категорії) — тоді питання розкладаються по них:
+     — .txt/.md: рядок «Блок: Назва» / «Категорія: Назва» / «## Назва» / «Назва:»
+       відкриває блок, рядки під ним — його питання (маркери й нумерацію
+       зрізаємо); без заголовків — просто одне питання в рядку;
+     — .csv: з заголовком (колонки «блок»/«категорія» й «питання») — по колонках;
+       без заголовка — перша колонка, як і раніше;
+     — .json: масив рядків; масив обʼєктів з полем block/category; групи
+       {block, questions: […]}; або обʼєкт {«Блок»: […питання…]}.
      Нові картки лише додаються в редактор: нічого не зберігається, доки
      дослідник не натисне «Зберегти гайд». */
-  function parseQuestionsFile(name, text) {
-    text = String(text || "").replace(/^\uFEFF/, "");
-    if (/\.json$/i.test(name)) {
-      var data = JSON.parse(text);
-      var list = Array.isArray(data) ? data : (data.topics || data.questions || []);
-      return list.map(function (item) {
-        if (typeof item === "string") return { text: item.trim(), must_learn: [] };
-        var q = item.ask_if_missed || item.text || item.question || "";
-        return { text: String(q).trim(), must_learn: item.must_learn || item.expects || [] };
-      }).filter(function (q) { return q.text; });
+  var IMPORT_BLOCK_WORDS = "блок|категорія|категория|розділ|раздел|block|category|section";
+  var IMPORT_BLOCK_KEYS = ["block", "category", "section", "блок", "категорія", "категория", "розділ"];
+  var IMPORT_GROUP_NAME_KEYS = IMPORT_BLOCK_KEYS.concat(["title", "name", "назва"]);
+  var IMPORT_LIST_KEYS = ["questions", "topics", "items", "питання"];
+
+  function firstOf(item, keys) {
+    for (var i = 0; i < keys.length; i++) {
+      var value = item[keys[i]];
+      if (value !== undefined && value !== null && String(value).trim() !== "") return value;
     }
-    var csv = /\.csv$/i.test(name);
-    var rows = text.split(/\r?\n/).map(function (line) {
-      line = line.trim();
-      if (csv) {
-        var m = line.match(/^"((?:[^"]|"")*)"|^[^,;]*/);
-        line = m ? (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[0]).trim() : line;
+    return "";
+  }
+
+  function importQuestion(item, block) {
+    if (typeof item === "string") return { text: item.trim(), must_learn: [], block: block };
+    var text = item.ask_if_missed || item.text || item.question || item["питання"] || "";
+    var own = String(firstOf(item, IMPORT_BLOCK_KEYS)).trim();
+    return {
+      text: String(text).trim(),
+      must_learn: item.must_learn || item.expects || [],
+      block: own || block
+    };
+  }
+
+  function importFromJson(data, block, out) {
+    var list = Array.isArray(data) ? data : null;
+    if (!list && data && typeof data === "object") {
+      var listed = null;
+      ["blocks", "categories", "sections", "блоки", "категорії"].concat(IMPORT_LIST_KEYS).forEach(function (key) {
+        if (!listed && Array.isArray(data[key])) listed = data[key];
+      });
+      if (listed) list = listed;
+      else {
+        // {"Назва блоку": [питання…], …}
+        Object.keys(data).forEach(function (key) {
+          if (Array.isArray(data[key])) importFromJson(data[key], key.trim(), out);
+        });
+        return out;
       }
-      return line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
-    }).filter(Boolean);
-    if (csv && rows.length && /^(питання|question|текст|text)$/i.test(rows[0])) rows.shift();
-    return rows.map(function (row) { return { text: row, must_learn: [] }; });
+    }
+    (list || []).forEach(function (item) {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        var children = null;
+        IMPORT_LIST_KEYS.forEach(function (key) {
+          if (!children && Array.isArray(item[key])) children = item[key];
+        });
+        var hasOwnText = item.ask_if_missed || item.text || item.question || item["питання"];
+        if (children && !hasOwnText) {
+          var groupName = String(firstOf(item, IMPORT_GROUP_NAME_KEYS)).trim() || block;
+          importFromJson(children, groupName, out);
+          return;
+        }
+      }
+      out.push(importQuestion(item, block));
+    });
+    return out;
+  }
+
+  // Мінімальний розбір CSV з лапками; роздільник — кома або крапка з комою.
+  function parseCsv(text) {
+    var firstLine = text.split(/\r?\n/, 1)[0] || "";
+    var delimiter = (firstLine.split(";").length > firstLine.split(",").length) ? ";" : ",";
+    var rows = [], row = [], cell = "", quoted = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (quoted) {
+        if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else cell += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === delimiter) { row.push(cell); cell = ""; }
+      else if (ch === "\n" || ch === "\r") {
+        if (ch === "\r" && text[i + 1] === "\n") i++;
+        row.push(cell); cell = "";
+        rows.push(row); row = [];
+      } else cell += ch;
+    }
+    if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+    return rows.filter(function (r) { return r.some(function (c) { return c.trim(); }); });
+  }
+
+  function importFromCsv(text) {
+    var rows = parseCsv(text);
+    if (!rows.length) return [];
+    var header = rows[0].map(function (c) { return c.trim().toLowerCase(); });
+    var blockCol = -1, questionCol = -1, checklistCol = -1;
+    header.forEach(function (cell, index) {
+      if (new RegExp("^(" + IMPORT_BLOCK_WORDS + ")$").test(cell)) blockCol = index;
+      else if (/^(питання|question|текст|text)$/.test(cell)) questionCol = index;
+      else if (/^(чекліст|checklist|must_learn|expects|про що варто сказати)$/.test(cell)) checklistCol = index;
+    });
+    var hasHeader = blockCol !== -1 || questionCol !== -1;
+    if (hasHeader) rows.shift();
+    if (questionCol === -1) {
+      for (var i = 0; i < (rows[0] || header).length; i++) {
+        if (i !== blockCol && i !== checklistCol) { questionCol = i; break; }
+      }
+      if (questionCol === -1) questionCol = 0;
+    }
+    return rows.map(function (cols) {
+      var points = checklistCol === -1 ? [] : String(cols[checklistCol] || "")
+        .split(/[|\n]/).map(function (x) { return x.trim(); }).filter(Boolean);
+      return {
+        text: String(cols[questionCol] || "").trim(),
+        must_learn: points,
+        block: blockCol === -1 ? "" : String(cols[blockCol] || "").trim()
+      };
+    });
+  }
+
+  function importFromText(text) {
+    var out = [];
+    var block = "";
+    var heading = [
+      /^#{1,6}\s+(.+)$/,
+      new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d*\\s*[:.\\-–—)]\\s*(.+)$", "i")
+    ];
+    var bare = new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d+$", "i");
+    text.split(/\r?\n/).forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) return;
+      var found = null;
+      for (var i = 0; i < heading.length && !found; i++) {
+        var m = line.match(heading[i]);
+        if (m) found = m[1];
+      }
+      if (!found && bare.test(line)) found = line;
+      // «Знайомство:» — рядок із двокрапкою наприкінці й без знака питання — теж заголовок.
+      if (!found && /:$/.test(line) && line.indexOf("?") === -1) found = line.slice(0, -1);
+      if (found) { block = found.replace(/^#+\s*/, "").replace(/[*_`]+/g, "").trim(); return; }
+      line = line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
+      if (line) out.push({ text: line, must_learn: [], block: block });
+    });
+    return out;
+  }
+
+  function parseQuestionsFile(name, text) {
+    text = String(text || "").replace(/^﻿/, "");
+    var items;
+    if (/\.json$/i.test(name)) items = importFromJson(JSON.parse(text), "", []);
+    else if (/\.csv$/i.test(name)) items = importFromCsv(text);
+    else items = importFromText(text);
+    return items.filter(function (q) { return q.text; });
+  }
+
+  /* Питання з назвою блоку йдуть у блок із такою назвою (існуючий або новий);
+     без назви — в останній блок, як було до появи блоків. */
+  function appendImportedQuestions(questions) {
+    var fallback = lastBlockCards();
+    var hosts = {};
+    blockEls().forEach(function (block) {
+      var name = block.querySelector(".block-name").value.trim();
+      if (name && !hosts[name]) hosts[name] = block.querySelector(".topic-block-cards");
+    });
+    var newBlocks = 0;
+    questions.forEach(function (q) {
+      var host = fallback;
+      if (q.block) {
+        if (!hosts[q.block]) {
+          var block = buildBlock(q.block);
+          el("guide-topics-list").appendChild(block);
+          hosts[q.block] = block.querySelector(".topic-block-cards");
+          newBlocks++;
+        }
+        host = hosts[q.block];
+      }
+      host.appendChild(buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn }));
+    });
+    refreshTopicOrderControls();
+    return newBlocks;
   }
 
   function importQuestionsFile(file) {
@@ -1590,14 +1744,11 @@
       catch (err) { errorNode.textContent = "Файл не схожий на список питань: " + err.message; return; }
       if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
       if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
-      var host = lastBlockCards();
-      questions.forEach(function (q) {
-        host.appendChild(buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn }));
-      });
-      refreshTopicOrderControls();
+      var newBlocks = appendImportedQuestions(questions);
       el("import-name").textContent = file.name;
-      el("import-count").textContent = "Додано " + questions.length + " " +
-        (function (n) { var m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? "питання" : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "питання" : "питань"); })(questions.length) + ". Натисніть «Зберегти гайд».";
+      var message = "Додано " + questions.length + " " + pluralQuestions(questions.length);
+      if (newBlocks) message += ", нових блоків: " + newBlocks;
+      el("import-count").textContent = message + ". Натисніть «Зберегти гайд».";
       el("import-result").classList.remove("hidden");
     };
     reader.readAsText(file, "utf-8");
