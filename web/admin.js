@@ -558,22 +558,6 @@
       block.querySelector(".block-count").textContent = n + " " + pluralQuestions(n);
       block.querySelector(".block-remove").disabled = blocks.length <= 1;
     });
-    placeImportBox();
-  }
-
-  /* Зона завантаження документа живе всередині першого блоку (над його питаннями):
-     туди ж, у перший блок, лягають питання з файлу — тож зона й результат поруч.
-     Вузол ми тримаємо в змінній: коли блоки перемальовуються, він ненадовго
-     відчіплюється від сторінки, а потім повертається на місце. */
-  var importBoxNode = null;
-  function placeImportBox() {
-    if (!importBoxNode) importBoxNode = document.querySelector(".import-box");
-    var first = blockEls()[0];
-    if (!importBoxNode || !first) return;
-    var host = first.querySelector(".topic-block-cards");
-    if (importBoxNode.parentNode !== host || host.firstChild !== importBoxNode) {
-      host.insertBefore(importBoxNode, host.firstChild);
-    }
   }
 
   function uniqueBlockName() {

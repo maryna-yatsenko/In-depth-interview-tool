@@ -1827,5 +1827,3 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
   font-size: 13px; color: var(--heading); text-decoration: underline; cursor: pointer;
 }
 .improve-undo:hover { color: var(--text); }
-/* Зона документа всередині блоку: рівно по ширині карток. */
-.topic-block-cards > .import-box { margin-bottom: 16px; }

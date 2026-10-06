@@ -199,26 +199,7 @@
            бо це редагують частіше й незалежно від того, як налаштований
            простір. -->
       <section id="tab-questions" class="tab-panel hidden">
-        <div id="questions-callout" class="callout">
-          <button type="button" class="callout-close" id="btn-callout-close" aria-label="Закрити підказку">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-          <div class="callout-body">
-            <strong class="callout-title">Як влаштовані картки питань</strong>
-            <p>Кожна картка — одне питання гайда: текст і чекліст «про що варто сказати»
-               під ним. Мікрофон біля поля питання — не для диктування тексту, а щоб
-               записати саме питання своїм голосом: цей запис респондент почує замість
-               голосу, що читає текст.</p>
-          </div>
-          <div class="callout-media" aria-hidden="true">
-            <img class="callout-illustration" src="images/form-filling-vector.png" alt="">
-          </div>
-        </div>
-
-        <!-- Перше й останнє питання — не картки зі списку: їх не можна
-             переставити чи прибрати, тому вони й виглядають інакше, а не
-             просто стоять першими та останніми в тому самому списку. -->
-                <!-- Імпорт списку питань: компактна зона для файлу. Питання потрапляють у
+        <!-- Імпорт списку питань: компактна зона для файлу. Питання потрапляють у
              редактор як нові картки; у гайді вони з'являються після «Зберегти гайд». -->
         <div class="import-box">
           <label id="import-drop" class="import-drop" tabindex="0">
@@ -258,6 +239,27 @@
           <div id="import-docs" class="import-docs"></div>
           <p id="import-error" class="import-error"></p>
         </div>
+
+        <div id="questions-callout" class="callout">
+          <button type="button" class="callout-close" id="btn-callout-close" aria-label="Закрити підказку">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <div class="callout-body">
+            <strong class="callout-title">Як влаштовані картки питань</strong>
+            <p>Кожна картка — одне питання гайда: текст і чекліст «про що варто сказати»
+               під ним. Мікрофон біля поля питання — не для диктування тексту, а щоб
+               записати саме питання своїм голосом: цей запис респондент почує замість
+               голосу, що читає текст.</p>
+          </div>
+          <div class="callout-media" aria-hidden="true">
+            <img class="callout-illustration" src="images/form-filling-vector.png" alt="">
+          </div>
+        </div>
+
+        <!-- Перше й останнє питання — не картки зі списку: їх не можна
+             переставити чи прибрати, тому вони й виглядають інакше, а не
+             просто стоять першими та останніми в тому самому списку. -->
+                
 
         <div class="pinned-question">
           <label class="block">Вітання
