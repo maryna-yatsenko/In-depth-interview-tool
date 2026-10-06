@@ -54,6 +54,36 @@ class TestAdminFiles(unittest.TestCase):
             with self.assertRaises(admin_api.AdminError):
                 admin_api.create_space(self.root, bad, "X")
 
+    # ── копія й порядок ──────────────────────────────────────────────────
+    def test_duplicate_is_independent_draft_copy(self):
+        result = admin_api.duplicate_space(self.root, "example")
+        self.assertEqual(result["key"], "example-copy")
+        space = load_space(os.path.join(self.root, result["key"], "space.json"))
+        self.assertTrue(space.draft)
+        self.assertTrue(space.title.endswith("(копія)"))
+        copy_guide = admin_api.read_guide(self.root, result["key"], "first")
+        original = admin_api.read_guide(self.root, "example", "first")
+        self.assertEqual(copy_guide["topics"], original["topics"])
+        # Оригінал не чіпається, а друга копія отримує інший ключ.
+        self.assertFalse(load_space(os.path.join(self.root, "example", "space.json")).title.endswith("(копія)"))
+        self.assertEqual(admin_api.duplicate_space(self.root, "example")["key"], "example-copy-2")
+
+    def test_duplicate_unknown_space_is_404(self):
+        with self.assertRaises(admin_api.AdminError) as ctx:
+            admin_api.duplicate_space(self.root, "nope")
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_space_order_is_saved_and_applied(self):
+        admin_api.create_space(self.root, "alpha", "Альфа")
+        admin_api.create_space(self.root, "beta", "Бета")
+        admin_api.write_order(self.root, ["beta", "example", "ghost/..", "alpha"])
+        keys = [item["key"] for item in admin_api.list_spaces(self.root)]
+        self.assertEqual(keys, ["beta", "example", "alpha"])
+        # Новий простір, якого немає в порядку, йде в кінець; службова тека порядку не показується.
+        admin_api.create_space(self.root, "gamma", "Гама")
+        keys = [item["key"] for item in admin_api.list_spaces(self.root)]
+        self.assertEqual(keys, ["beta", "example", "alpha", "gamma"])
+
     # ── запис ────────────────────────────────────────────────────────────
     def test_broken_guide_never_reaches_disk(self):
         before = admin_api.read_guide(self.root, "example", "first")

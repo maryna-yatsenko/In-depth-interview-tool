@@ -208,7 +208,39 @@ def list_spaces(root: str) -> List[Dict[str, Any]]:
             }
         entry["guides"] = sorted(guide_names)
         items.append(entry)
+    # Порядок у лівій панелі — той, який дослідник задав перетягуванням; нові
+    # (яких ще немає в порядку) йдуть після впорядкованих, за алфавітом.
+    order = read_order(root)
+    rank = {key: index for index, key in enumerate(order)}
+    items.sort(key=lambda item: rank.get(item["key"], len(rank)))
     return items
+
+
+def _order_path(root: str) -> str:
+    # «_admin» не може бути ключем простору (KEY_RE дозволяє лише a-z0-9 на
+    # початку), а без space.json список просторів його пропускає.
+    return os.path.join(root, "_admin", "order.json")
+
+
+def read_order(root: str) -> List[str]:
+    raw = _read_bytes(root, "_admin", _order_path(root))
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return []
+    return [key for key in data if isinstance(key, str)] if isinstance(data, list) else []
+
+
+def write_order(root: str, order: List[Any]) -> Dict[str, Any]:
+    keys = []
+    for key in order or []:
+        if isinstance(key, str) and KEY_RE.match(key) and key not in keys:
+            keys.append(key)
+    _write_bytes(root, "_admin", _order_path(root),
+                 json.dumps(keys, ensure_ascii=False).encode("utf-8"))
+    return {"ok": True, "order": keys}
 
 
 def read_space(root: str, space_key: str) -> Dict[str, Any]:
@@ -397,6 +429,57 @@ def create_space(root: str, space_key: str, title: str, template: str = "example
     return {"ok": True, "key": space_key, "draft": True}
 
 
+def duplicate_space(root: str, source_key: str) -> Dict[str, Any]:
+    """Копія дослідження з усім вмістом (простір, гайди, записи питань) —
+    як чернетка. Зібрані відповіді респондентів не копіюються."""
+    source_key = _check_key(source_key, "інтервʼю")
+    source = os.path.join(root, source_key)
+    if not os.path.isdir(source) and not (_on_postgres() and store_db.list_config_override_paths(source_key)):
+        raise AdminError("Інтервʼю '%s' не знайдено" % source_key, 404)
+
+    def taken(key: str) -> bool:
+        return (os.path.isdir(os.path.join(root, key))
+                or os.path.isdir(os.path.join(_trash_dir(root), key))
+                or (_on_postgres() and (bool(store_db.list_config_override_paths(key))
+                                        or key in set(store_db.list_all_deleted_space_keys()))))
+
+    base = source_key[:32].rstrip("-_") + "-copy"
+    new_key, n = base, 1
+    while taken(new_key):
+        n += 1
+        new_key = "%s-%d" % (base, n)
+    target = os.path.join(root, new_key)
+
+    if _on_postgres():
+        # Спершу файли з бандла, потім перевизначення з бази (вони перекривають).
+        if os.path.isdir(source):
+            for dirpath, _dirs, files in os.walk(source):
+                for filename in files:
+                    src_path = os.path.join(dirpath, filename)
+                    with open(src_path, "rb") as fh:
+                        store_db.put_config_override(
+                            new_key, _rel_path(root, source_key, src_path), fh.read())
+        for rel in store_db.list_config_override_paths(source_key):
+            content = store_db.get_config_override(source_key, rel)
+            if content is not None:
+                store_db.put_config_override(new_key, rel, content)
+    else:
+        shutil.copytree(source, target)
+
+    space_path = os.path.join(root, new_key, "space.json")
+    data = _load_json_aware(root, new_key, space_path) or {}
+    title = "%s (копія)" % (data.get("title") or source_key)
+    data["key"] = new_key
+    data["title"] = title
+    data["draft"] = True
+    data["created_at"] = datetime.now(timezone.utc).isoformat()
+    branding = dict(data.get("branding") or {})
+    branding["page_title"] = title
+    data["branding"] = branding
+    _write_validated(root, new_key, space_path, data, load_space)
+    return {"ok": True, "key": new_key, "title": title}
+
+
 def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     """Структуру шаблону лишаємо, доменний зміст — прибираємо.
 
@@ -570,6 +653,10 @@ def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any
                                     payload.get("data") or {})
         if path == "/api/admin/space/new":
             return 200, create_space(root, payload.get("space", ""), payload.get("title", ""))
+        if path == "/api/admin/space/duplicate":
+            return 200, duplicate_space(root, payload.get("space", ""))
+        if path == "/api/admin/spaces/order":
+            return 200, write_order(root, payload.get("order") or [])
         if path == "/api/admin/space/delete":
             return 200, trash_space(root, payload.get("space", ""))
         if path == "/api/admin/trash/restore":

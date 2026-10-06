@@ -144,8 +144,127 @@
       button.appendChild(text);
       button.addEventListener("click", function () { selectSpace(space.key); });
       li.appendChild(button);
+
+      // «⋯» — меню дій (span, а не button: на кнопки в .space-list діє стиль рядка списку).
+      var more = document.createElement("span");
+      more.className = "space-menu-btn";
+      more.setAttribute("role", "button");
+      more.tabIndex = 0;
+      more.title = "Дії з дослідженням";
+      more.setAttribute("aria-label", "Дії з дослідженням");
+      more.setAttribute("aria-haspopup", "menu");
+      more.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+      more.addEventListener("click", function (event) {
+        event.stopPropagation();
+        openSpaceMenu(space.key, more);
+      });
+      more.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          openSpaceMenu(space.key, more);
+        }
+      });
+      li.appendChild(more);
+
+      li.className = "space-item";
+      li.draggable = true;
+      li._key = space.key;
+      wireSpaceDrag(li);
       list.appendChild(li);
     });
+  }
+
+  /* Меню дій над дослідженням: дублювати / видалити. Одне плаваюче меню на
+     сторінці (position: fixed), бо ліва панель обрізає все, що виходить за неї. */
+  function closeSpaceMenu() {
+    var menu = document.getElementById("space-menu");
+    if (menu) menu.remove();
+  }
+
+  function openSpaceMenu(key, anchor) {
+    var already = document.getElementById("space-menu");
+    closeSpaceMenu();
+    if (already && already._key === key) return;
+    var menu = document.createElement("div");
+    menu.id = "space-menu";
+    menu.className = "space-menu";
+    menu.setAttribute("role", "menu");
+    menu._key = key;
+    function item(label, icon, danger, action) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "menuitem");
+      button.className = "space-menu-item" + (danger ? " is-danger" : "");
+      button.innerHTML = icon;
+      button.appendChild(document.createTextNode(label));
+      button.addEventListener("click", function () { closeSpaceMenu(); action(); });
+      menu.appendChild(button);
+    }
+    item("Дублювати",
+      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+      false, function () { duplicateSpace(key); });
+    item("Видалити", ICONS.trash, true, function () { selectSpace(key); openDeleteConfirm(); });
+    document.body.appendChild(menu);
+    var rect = anchor.getBoundingClientRect();
+    menu.style.top = Math.round(rect.bottom + 4) + "px";
+    menu.style.left = Math.round(Math.max(8, rect.right - menu.offsetWidth)) + "px";
+    var first = menu.querySelector("button");
+    if (first) first.focus();
+  }
+
+  document.addEventListener("click", function (event) {
+    var menu = document.getElementById("space-menu");
+    if (menu && !menu.contains(event.target)) closeSpaceMenu();
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") closeSpaceMenu();
+  });
+
+  function duplicateSpace(key) {
+    post("/api/admin/space/duplicate", { space: key })
+      .then(function (result) {
+        return refresh().then(function () {
+          selectSpace(result.key);
+          flash("Копію створено", "ok");
+        });
+      })
+      .catch(function (err) { flash(err.message || "Не вдалося створити копію", "bad"); });
+  }
+
+  /* Перетягування досліджень у лівій панелі. Порядок зберігається на сервері
+     (одразу після того, як відпустили), тож однаковий для всіх, хто відкриє панель. */
+  var spaceDrag = null;
+
+  function wireSpaceDrag(li) {
+    li.addEventListener("dragstart", function (event) {
+      spaceDrag = li;
+      li.classList.add("dragging");
+      event.dataTransfer.effectAllowed = "move";
+      try { event.dataTransfer.setData("text/plain", li._key); } catch (err) { /* байдуже */ }
+    });
+    li.addEventListener("dragend", function () {
+      li.classList.remove("dragging");
+      spaceDrag = null;
+      saveSpaceOrder();
+    });
+    li.addEventListener("dragover", function (event) {
+      if (!spaceDrag || spaceDrag === li) return;
+      event.preventDefault();
+      var rect = li.getBoundingClientRect();
+      var before = (event.clientY - rect.top) < rect.height / 2;
+      li.parentNode.insertBefore(spaceDrag, before ? li : li.nextSibling);
+    });
+  }
+
+  function saveSpaceOrder() {
+    var keys = Array.prototype.map.call(
+      el("space-list").querySelectorAll("li.space-item"), function (li) { return li._key; });
+    var current = state.spaces.map(function (space) { return space.key; });
+    if (keys.join("|") === current.join("|")) return;
+    state.spaces.sort(function (a, b) { return keys.indexOf(a.key) - keys.indexOf(b.key); });
+    post("/api/admin/spaces/order", { order: keys })
+      .catch(function (err) { flash(err.message || "Не вдалося зберегти порядок", "bad"); });
   }
 
   // Єдине місце статусу — клікабельний чіп у шапці сторінки; поля-
@@ -440,6 +559,22 @@
     var field = block.querySelector(".block-name");
     field.focus();
     field.select();
+  }
+
+  /* Усе питання й блоки з редактора — лишається один порожній блок із порожнім
+     питанням (гайд без питань не збережеться). Нічого не зберігається, доки
+     дослідник не натисне «Зберегти гайд». */
+  function clearAllQuestions() {
+    var total = topicCards().length;
+    if (!window.confirm("Очистити всі питання й блоки (" + total + ")? " +
+        "Зміни не збережуться, доки ви не натиснете «Зберегти гайд».")) return;
+    var host = el("guide-topics-list");
+    host.innerHTML = "";
+    clearImportedDocs();
+    var block = buildBlock("");
+    block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
+    host.appendChild(block);
+    refreshTopicOrderControls();
   }
 
   function lastBlockCards() {
@@ -1914,6 +2049,7 @@
   })();
 
   el("btn-add-block").addEventListener("click", addBlock);
+  el("btn-clear-questions").addEventListener("click", clearAllQuestions);
   el("btn-reorder-topics").addEventListener("click", openTopicOrderModal);
   // "Зберегти" застосовує перетягнутий порядок; × у шапці — просто
   // закриває, без застосування (як скасувати), той самий принцип, що
