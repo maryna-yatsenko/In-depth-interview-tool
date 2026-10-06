@@ -227,6 +227,31 @@
     if (event.key === "Escape") closeSpaceMenu();
   });
 
+  /* Підтвердження в нашому вікні (той самий скелет, що «Перенести в кошик?»),
+     а не вбудоване window.confirm: воно в частині середовищ не показується
+     й намертво блокує сторінку. Повертає Promise<boolean>. */
+  var confirmResolve = null;
+
+  function confirmAction(options) {
+    return new Promise(function (resolve) {
+      if (confirmResolve) confirmResolve(false);
+      confirmResolve = resolve;
+      el("confirm-title").textContent = options.title;
+      el("confirm-text").textContent = options.text;
+      var ok = el("btn-confirm-ok");
+      ok.textContent = options.confirmLabel || "Підтвердити";
+      el("confirm-modal").classList.remove("hidden");
+      el("btn-confirm-cancel").focus();
+    });
+  }
+
+  function closeConfirm(result) {
+    el("confirm-modal").classList.add("hidden");
+    var resolve = confirmResolve;
+    confirmResolve = null;
+    if (resolve) resolve(result);
+  }
+
   function duplicateSpace(key) {
     post("/api/admin/space/duplicate", { space: key })
       .then(function (result) {
@@ -591,9 +616,16 @@
       var filled = Array.prototype.filter.call(
         block.querySelectorAll(".topic-question-input"),
         function (field) { return field.value.trim(); }).length;
-      if (filled && !window.confirm("Видалити блок разом із питаннями (" + filled + ")?")) return;
-      block.remove();
-      refreshTopicOrderControls();
+      function remove() {
+        block.remove();
+        refreshTopicOrderControls();
+      }
+      if (!filled) { remove(); return; }
+      confirmAction({
+        title: "Видалити блок?",
+        text: "Блок разом із питаннями (" + filled + ") буде прибрано з редактора. Остаточно це збережеться після «Зберегти гайд».",
+        confirmLabel: "Видалити"
+      }).then(function (ok) { if (ok) remove(); });
     });
     head.appendChild(removeBtn);
     block.appendChild(head);
@@ -635,15 +667,20 @@
      дослідник не натисне «Зберегти гайд». */
   function clearAllQuestions() {
     var total = topicCards().length;
-    if (!window.confirm("Очистити всі питання й блоки (" + total + ")? " +
-        "Зміни не збережуться, доки ви не натиснете «Зберегти гайд».")) return;
-    var host = el("guide-topics-list");
-    host.innerHTML = "";
-    clearImportedDocs();
-    var block = buildBlock("");
-    block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
-    host.appendChild(block);
-    refreshTopicOrderControls();
+    confirmAction({
+      title: "Очистити все?",
+      text: "Усі питання (" + total + ") і блоки буде прибрано з редактора. Нічого не збережеться, доки ви не натиснете «Зберегти гайд».",
+      confirmLabel: "Очистити"
+    }).then(function (ok) {
+      if (!ok) return;
+      var host = el("guide-topics-list");
+      host.innerHTML = "";
+      clearImportedDocs();
+      var block = buildBlock("");
+      block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
+      host.appendChild(block);
+      refreshTopicOrderControls();
+    });
   }
 
   function lastBlockCards() {
@@ -917,8 +954,13 @@
     });
 
     deleteBtn.addEventListener("click", function () {
-      if (!window.confirm("Прибрати запис голосу для цього питання?")) return;
-      post("/api/admin/topic-audio/delete",
+      confirmAction({
+        title: "Прибрати запис голосу?",
+        text: "Запис цього питання буде видалено; респондент знову чутиме його синтезованим голосом.",
+        confirmLabel: "Прибрати"
+      }).then(function (ok) {
+        if (!ok) return null;
+        return post("/api/admin/topic-audio/delete",
            { space: state.space, guide: state.guide, topic: topicId })
         .then(function () {
           player.classList.add("hidden");
@@ -927,8 +969,8 @@
           recordBtn.classList.remove("hidden");
           recordBtn.innerHTML = ICONS.mic + "Записати голосом";
           status.textContent = "Запис прибрано.";
-        })
-        .catch(function (err) { status.textContent = "Не вдалося прибрати: " + err.message; });
+        });
+      }).catch(function (err) { status.textContent = "Не вдалося прибрати: " + err.message; });
     });
 
     return wrap;
@@ -2036,18 +2078,24 @@
 
   function removeImportedDoc(importId, name, row) {
     var cards = topicCards().filter(function (card) { return card._importId === importId; });
-    if (cards.length && !window.confirm(
-        "Видалити документ «" + name + "» разом із його питаннями (" + cards.length + ")?")) return;
-    cards.forEach(function (card) { card.remove(); });
-    refreshTopicOrderControls();
-    // Гайд без жодного питання не збережеться — лишаємо порожню картку, щоб редактор не був порожнім.
-    if (!topicCards().length) {
-      var block = buildBlock("");
-      block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
-      el("guide-topics-list").appendChild(block);
+    function remove() {
+      cards.forEach(function (card) { card.remove(); });
       refreshTopicOrderControls();
+      // Гайд без жодного питання не збережеться — лишаємо порожню картку, щоб редактор не був порожнім.
+      if (!topicCards().length) {
+        var block = buildBlock("");
+        block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
+        el("guide-topics-list").appendChild(block);
+        refreshTopicOrderControls();
+      }
+      row.remove();
     }
-    row.remove();
+    if (!cards.length) { remove(); return; }
+    confirmAction({
+      title: "Видалити документ?",
+      text: "Документ «" + name + "» разом із його питаннями (" + cards.length + ") буде прибрано з редактора.",
+      confirmLabel: "Видалити"
+    }).then(function (ok) { if (ok) remove(); });
   }
 
   var IMPORT_PROMPT = [
@@ -2083,10 +2131,23 @@
       button.textContent = "Скопійовано";
       setTimeout(function () { button.textContent = original; }, 1800);
     };
+    // Без window.prompt: запасний шлях — тимчасове поле й системне копіювання.
+    var fallback = function () {
+      var area = document.createElement("textarea");
+      area.value = IMPORT_PROMPT;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+      area.remove();
+      if (ok) done(); else flash("Не вдалося скопіювати промпт", "bad");
+    };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(IMPORT_PROMPT).then(done, function () { window.prompt("Скопіюйте промпт:", IMPORT_PROMPT); });
+      navigator.clipboard.writeText(IMPORT_PROMPT).then(done, fallback);
     } else {
-      window.prompt("Скопіюйте промпт:", IMPORT_PROMPT);
+      fallback();
     }
   }
 
@@ -2153,8 +2214,15 @@
   el("transcript-modal").addEventListener("click", function (event) {
     if (event.target.id === "transcript-modal") closeTranscript();
   });
+  el("btn-confirm-ok").addEventListener("click", function () { closeConfirm(true); });
+  el("btn-confirm-cancel").addEventListener("click", function () { closeConfirm(false); });
+  el("btn-confirm-x").addEventListener("click", function () { closeConfirm(false); });
+  el("confirm-modal").addEventListener("click", function (event) {
+    if (event.target.id === "confirm-modal") closeConfirm(false);
+  });
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Escape") return;
+    if (!el("confirm-modal").classList.contains("hidden")) closeConfirm(false);
     if (!el("transcript-modal").classList.contains("hidden")) closeTranscript();
     if (!el("trash-modal").classList.contains("hidden")) closeTrash();
     if (!el("delete-modal").classList.contains("hidden")) closeDeleteConfirm();

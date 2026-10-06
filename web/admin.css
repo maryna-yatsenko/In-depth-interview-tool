@@ -1805,3 +1805,13 @@ body.admin { --danger: #dc2626; }
 }
 body.admin[data-theme="light"] { --danger: #dc2626; }
 body.admin[data-theme="dark"] { --danger: #ff5c5c; }
+
+/* Вузьке або низьке вікно: картка прокручується, а кнопки не вилазять за її межі;
+   на телефоні кнопки на всю ширину (головна — зверху). */
+.modal-card { overflow-y: auto; }
+.modal-card > * { flex: none; }
+.modal-card #transcript, .modal-card .reorder-list, .modal-card .trash-modal-list { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 520px) {
+  .modal-actions { flex-direction: column-reverse; align-items: stretch; }
+  .modal-actions button { width: 100%; }
+}

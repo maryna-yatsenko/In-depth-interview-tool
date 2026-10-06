@@ -358,6 +358,24 @@
     </div>
   </div>
 
+  <!-- Підтвердження дій у редакторі (видалити блок, очистити все, прибрати документ
+       чи запис голосу): той самий скелет, що й «Перенести в кошик?» — замість
+       вбудованих вікон браузера, які в частині середовищ не відкриваються взагалі
+       й блокують сторінку. -->
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="confirm-title"></h2>
+        <button type="button" id="btn-confirm-x" class="modal-close" aria-label="Закрити"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <p id="confirm-text" class="muted tiny"></p>
+      <div class="modal-actions">
+        <button type="button" id="btn-confirm-cancel" class="ghost">Скасувати</button>
+        <button type="button" id="btn-confirm-ok" class="primary danger">Підтвердити</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Кошик: модальне вікно, а не розкривний список у сайдбарі — той
        самий скелет, що й у решти модалок, замість вкладеного .space-list. -->
   <div id="trash-modal" class="modal hidden">
