@@ -558,6 +558,22 @@
       block.querySelector(".block-count").textContent = n + " " + pluralQuestions(n);
       block.querySelector(".block-remove").disabled = blocks.length <= 1;
     });
+    placeImportBox();
+  }
+
+  /* Зона завантаження документа живе всередині першого блоку (над його питаннями):
+     туди ж, у перший блок, лягають питання з файлу — тож зона й результат поруч.
+     Вузол ми тримаємо в змінній: коли блоки перемальовуються, він ненадовго
+     відчіплюється від сторінки, а потім повертається на місце. */
+  var importBoxNode = null;
+  function placeImportBox() {
+    if (!importBoxNode) importBoxNode = document.querySelector(".import-box");
+    var first = blockEls()[0];
+    if (!importBoxNode || !first) return;
+    var host = first.querySelector(".topic-block-cards");
+    if (importBoxNode.parentNode !== host || host.firstChild !== importBoxNode) {
+      host.insertBefore(importBoxNode, host.firstChild);
+    }
   }
 
   function uniqueBlockName() {
@@ -2014,7 +2030,23 @@
 
   /* Питання з назвою блоку йдуть у блок із такою назвою (існуючий або новий);
      без назви — в останній блок, як було до появи блоків. */
+  function editorIsBlank() {
+    return topicCards().every(function (card) {
+      var question = card.querySelector(".topic-question-input");
+      var points = Array.prototype.filter.call(
+        card.querySelectorAll(".must-learn-item input"), function (i) { return i.value.trim(); });
+      return !(question && question.value.trim()) && !points.length;
+    });
+  }
+
   function appendImportedQuestions(questions, importId) {
+    var host = el("guide-topics-list");
+    // Редактор порожній (лише заготовка): питання з файлу заповнюють перший блок,
+    // а не лягають після порожньої картки.
+    if (editorIsBlank()) {
+      host.innerHTML = "";
+      clearImportedDocs();
+    }
     var fallback = lastBlockCards();
     var hosts = {};
     blockEls().forEach(function (block) {
@@ -2022,23 +2054,25 @@
       if (name && !hosts[name]) hosts[name] = block.querySelector(".topic-block-cards");
     });
     var newBlocks = 0;
+    var cards = [];
     questions.forEach(function (q) {
-      var host = fallback;
+      var target = fallback;
       if (q.block) {
         if (!hosts[q.block]) {
           var block = buildBlock(q.block);
-          el("guide-topics-list").appendChild(block);
+          host.appendChild(block);
           hosts[q.block] = block.querySelector(".topic-block-cards");
           newBlocks++;
         }
-        host = hosts[q.block];
+        target = hosts[q.block];
       }
       var card = buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn });
       card._importId = importId;
-      host.appendChild(card);
+      target.appendChild(card);
+      cards.push(card);
     });
     refreshTopicOrderControls();
-    return newBlocks;
+    return { newBlocks: newBlocks, cards: cards };
   }
 
   /* Документи, з яких зараз у редакторі є питання. Видалення документа
@@ -2073,7 +2107,84 @@
     remove.innerHTML = ICONS.trash;
     remove.addEventListener("click", function () { removeImportedDoc(importId, name, row); });
     row.appendChild(remove);
+    var status = document.createElement("span");
+    status.className = "import-status";
+    row.insertBefore(status, remove);
     el("import-docs").appendChild(row);
+    return row;
+  }
+
+  /* Автопокращення: після завантаження формулювання по черзі (по кілька за
+     запит) проходять через модель, яка приводить їх до практик якісних
+     досліджень — відкрите, нейтральне, про одну річ, простими словами.
+     Питання вже на місці зі своїм текстом; покращення підміняє його, а оригінал
+     лишається під рукою («Повернути оригінал»). Моделі немає — тихо лишаємо як є. */
+  function improveImportedQuestions(cards, row) {
+    var status = row.querySelector(".import-status");
+    var total = cards.length;
+    var done = 0, changed = 0;
+    status.textContent = "Покращую формулювання… 0/" + total;
+    var chunks = [];
+    for (var i = 0; i < cards.length; i += 4) chunks.push(cards.slice(i, i + 4));
+
+    function applyChunk(chunk, items) {
+      chunk.forEach(function (card, index) {
+        var item = items[index];
+        var field = card.querySelector(".topic-question-input");
+        if (!item || !item.changed || !card.isConnected || !field) return;
+        // Дослідниця вже правила цей текст сама — не чіпаємо.
+        if (field.value.trim() !== item.original) return;
+        field.value = item.text;
+        card._improvedFrom = item.original;
+        showImproveNote(card, field);
+        changed++;
+      });
+    }
+
+    function next(index) {
+      if (index >= chunks.length) {
+        status.textContent = changed ? "Формулювання покращено: " + changed + " з " + total : "Формулювання вже добрі";
+        return;
+      }
+      var chunk = chunks[index];
+      var texts = chunk.map(function (card) { return card.querySelector(".topic-question-input").value.trim(); });
+      post("/api/admin/improve-questions", { space: state.space, questions: texts })
+        .then(function (result) {
+          applyChunk(chunk, result.items || []);
+          done += chunk.length;
+          status.textContent = "Покращую формулювання… " + done + "/" + total;
+          next(index + 1);
+        })
+        .catch(function () {
+          status.textContent = changed
+            ? "Покращено " + changed + " з " + total + ", далі модель недоступна"
+            : "Автопокращення недоступне — питання лишились як у файлі";
+        });
+    }
+    next(0);
+  }
+
+  function showImproveNote(card, field) {
+    var wrap = field.parentNode;
+    var note = wrap.querySelector(".improve-note");
+    if (!note) {
+      note = document.createElement("div");
+      note.className = "improve-note";
+      wrap.appendChild(note);
+    }
+    note.innerHTML = "";
+    var label = document.createElement("span");
+    label.textContent = "Формулювання спрощено за практиками досліджень.";
+    note.appendChild(label);
+    var undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "improve-undo";
+    undo.textContent = "Повернути оригінал";
+    undo.addEventListener("click", function () {
+      field.value = card._improvedFrom || field.value;
+      note.remove();
+    });
+    note.appendChild(undo);
   }
 
   function removeImportedDoc(importId, name, row) {
@@ -2165,8 +2276,9 @@
       if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
       if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
       importSeq += 1;
-      var newBlocks = appendImportedQuestions(questions, importSeq);
-      addImportedDoc(importSeq, file.name, questions.length, newBlocks);
+      var added = appendImportedQuestions(questions, importSeq);
+      var row = addImportedDoc(importSeq, file.name, questions.length, added.newBlocks);
+      improveImportedQuestions(added.cards, row);
     };
     reader.readAsText(file, "utf-8");
   }

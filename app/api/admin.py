@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.space import ConfigError, load_guide, load_space
+from ..providers.base import ProviderError
+from ..providers.registry import build_llm
 from ..storage import db as store_db
 from ..storage import local as store_files
 
@@ -480,6 +482,81 @@ def duplicate_space(root: str, source_key: str) -> Dict[str, Any]:
     return {"ok": True, "key": new_key, "title": title}
 
 
+# ── автопокращення формулювань питань ─────────────────────────────────────
+#
+# Питання, яке дослідниця завантажила файлом, приводимо до практик якісних
+# досліджень: відкрите, нейтральне, про один випадок, про реальний досвід,
+# простими словами. Змісту не вигадуємо: якщо відповідь моделі підозріла
+# (порожня, задовга, не про те) — лишається оригінал.
+
+_IMPROVE_SYSTEM = (
+    "Ти допомагаєш дослідниці привести питання глибинного інтервʼю до найкращих практик "
+    "якісних користувацьких досліджень. Перепиши питання, яке надішле користувач, так, щоб воно:\n"
+    "- було відкритим (починалось із «Розкажіть…», «Як…», «Що…», «Коли…», «Чому…»), без відповіді «так/ні»;\n"
+    "- було нейтральним: без підказки відповіді, оцінок і наведення;\n"
+    "- питало про одну річ: якщо в питанні дві, залиш головну;\n"
+    "- питало про реальний минулий досвід («як було востаннє»), а не про гіпотетичне «що б ви зробили»;\n"
+    "- було простим, розмовним, до 20 слів, без жаргону;\n"
+    "- зберігало зміст і тему оригіналу, нічого не вигадувало; мова — українська.\n"
+    "Якщо питання вже добре, поверни його без змін. "
+    "Відповідай ЛИШЕ одним переписаним питанням, без пояснень, лапок і нумерації."
+)
+
+_improve_llm_cache = {}
+
+
+def _improve_llm(cfg: Dict[str, Any]):
+    """Провайдер збираємо один раз і тримаємо: локальна модель важка в памʼяті."""
+    config = dict(cfg or {})
+    # Питання коротке, але українські слова «дорогі» в токенах — дефолтних 80 мало.
+    config["max_tokens"] = max(int(config.get("max_tokens", 80)), 160)
+    key = json.dumps(config, sort_keys=True) + os.environ.get("LLM_PROVIDER_OVERRIDE", "")
+    if key not in _improve_llm_cache:
+        _improve_llm_cache[key] = build_llm(config)
+    return _improve_llm_cache[key]
+
+
+def _stems(text: str) -> set:
+    return {w[:5] for w in re.findall(r"[\w']+", text.lower()) if len(w) > 3}
+
+
+def _accept_rewrite(original: str, rewritten: str) -> str:
+    """Відповідь моделі — лише якщо схожа на переписане питання, а не на що завгодно."""
+    text = (rewritten or "").strip().strip('"“”«»').strip()
+    text = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s+", "", text)
+    if not text or len(text) > max(220, 2 * len(original)):
+        return original
+    if not _stems(original) & _stems(text):
+        return original
+    if not text.endswith("?"):
+        text = text.rstrip(".! ") + "?"
+    return text[0].upper() + text[1:]
+
+
+def improve_questions(root: str, space_key: str, questions: List[Any]) -> Dict[str, Any]:
+    _space_dir(root, space_key)
+    texts = [q.strip()[:600] for q in (questions or []) if isinstance(q, str) and q.strip()][:20]
+    if not texts:
+        raise AdminError("Немає питань для покращення")
+    space_raw = _load_json_aware(root, space_key, os.path.join(root, space_key, "space.json")) or {}
+    cfg = (space_raw.get("providers") or {}).get("llm") or {}
+    try:
+        llm = _improve_llm(cfg)
+    except (ProviderError, ImportError) as exc:
+        raise AdminError("Модель недоступна: %s" % exc, 503)
+    if getattr(llm, "name", "") == "mock":
+        raise AdminError("Модель недоступна: підключена лише заглушка", 503)
+    items = []
+    for text in texts:
+        try:
+            raw = llm.respond_text(_IMPROVE_SYSTEM, [{"role": "user", "content": text}])
+        except ProviderError as exc:
+            raise AdminError("Модель недоступна: %s" % exc, 503)
+        improved = _accept_rewrite(text, raw)
+        items.append({"original": text, "text": improved, "changed": improved != text})
+    return {"ok": True, "items": items}
+
+
 def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     """Структуру шаблону лишаємо, доменний зміст — прибираємо.
 
@@ -655,6 +732,8 @@ def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any
             return 200, create_space(root, payload.get("space", ""), payload.get("title", ""))
         if path == "/api/admin/space/duplicate":
             return 200, duplicate_space(root, payload.get("space", ""))
+        if path == "/api/admin/improve-questions":
+            return 200, improve_questions(root, payload.get("space", ""), payload.get("questions") or [])
         if path == "/api/admin/spaces/order":
             return 200, write_order(root, payload.get("order") or [])
         if path == "/api/admin/space/delete":

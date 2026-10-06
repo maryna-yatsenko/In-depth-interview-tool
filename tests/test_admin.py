@@ -73,6 +73,38 @@ class TestAdminFiles(unittest.TestCase):
             admin_api.duplicate_space(self.root, "nope")
         self.assertEqual(ctx.exception.status, 404)
 
+    def test_improve_questions_uses_model_and_guards_bad_output(self):
+        from app.providers.base import LLMProvider
+
+        class Stub(LLMProvider):
+            name = "stub"
+            replies = {
+                "Чи подобається вам велосипед?": "Розкажіть, що вам подобається у велосипеді",
+                "Як ви обирали велосипед?": "Ось мої думки про погоду і політику взагалі",
+            }
+
+            def respond_text(self, system, messages):
+                return self.replies[messages[0]["content"]]
+
+        original = admin_api._improve_llm
+        admin_api._improve_llm = lambda cfg: Stub()
+        try:
+            result = admin_api.improve_questions(
+                self.root, "example", list(Stub.replies))
+        finally:
+            admin_api._improve_llm = original
+        first, second = result["items"]
+        self.assertTrue(first["changed"])
+        self.assertEqual(first["text"], "Розкажіть, що вам подобається у велосипеді?")
+        # Відповідь не про те — лишаємо оригінал.
+        self.assertFalse(second["changed"])
+        self.assertEqual(second["text"], "Як ви обирали велосипед?")
+
+    def test_improve_questions_refuses_when_only_mock_model(self):
+        with self.assertRaises(admin_api.AdminError) as ctx:
+            admin_api.improve_questions(self.root, "example", ["Як ви обирали?"])
+        self.assertEqual(ctx.exception.status, 503)
+
     def test_space_order_is_saved_and_applied(self):
         admin_api.create_space(self.root, "alpha", "Альфа")
         admin_api.create_space(self.root, "beta", "Бета")

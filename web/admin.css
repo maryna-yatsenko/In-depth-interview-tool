@@ -1815,3 +1815,17 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
   .modal-actions { flex-direction: column-reverse; align-items: stretch; }
   .modal-actions button { width: 100%; }
 }
+
+/* Автопокращення формулювань: статус біля документа й підпис під питанням. */
+.import-status { flex: none; font-size: 12px; color: var(--muted); }
+.improve-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: 13px; color: var(--muted);
+}
+.improve-undo {
+  height: auto; padding: 2px 0; border: none; background: transparent;
+  font-size: 13px; color: var(--heading); text-decoration: underline; cursor: pointer;
+}
+.improve-undo:hover { color: var(--text); }
+/* Зона документа всередині блоку: рівно по ширині карток. */
+.topic-block-cards > .import-box { margin-bottom: 16px; }
