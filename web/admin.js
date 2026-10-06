@@ -1673,16 +1673,32 @@
   function importFromText(text) {
     var out = [];
     var block = "";
+    var last = null;          // останнє питання — до нього відносяться пункти чекліста
+    var lastNumbered = false; // питання було пронумероване (тоді «- …» під ним — пункти)
+    var lastNumber = 0;       // номер останнього пронумерованого питання
+    var inChecklist = false;  // після рядка «Про що варто сказати:»
+    var checklistStart = 0;   // скільки пунктів було до цього підпису
     var heading = [
       /^#{1,6}\s+(.+)$/,
-      new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d*\\s*[:.\\-–—)]\\s*(.+)$", "i")
+      new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?[\\dIVXLC]*\\s*[:.\\-–—)]\\s*(.+)$", "i")
     ];
     var bare = new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d+$", "i");
-    var last = null;        // останнє питання — до нього відносяться рядки зі «-»
-    var lastNumbered = false;
+    // Підпис чекліста: так він зветься в редакторі («Про що варто сказати:»).
+    var label = /^(?:про що (?:варто )?(?:сказати|почути)|чекліст|checklist)\s*:\s*(.*)$/i;
+
     text.split(/\r?\n/).forEach(function (raw) {
-      var line = raw.trim();
+      // Жирний шрифт і підкреслення з Markdown («**Блок: Назва**») зрізаємо.
+      var line = raw.replace(/\*\*|__|`/g, "").trim();
       if (!line) return;
+
+      var lm = line.match(label);
+      if (lm && last) {
+        inChecklist = true;
+        checklistStart = last.must_learn.length;
+        if (lm[1].trim()) last.must_learn.push(lm[1].trim());
+        return;
+      }
+
       var found = null;
       for (var i = 0; i < heading.length && !found; i++) {
         var m = line.match(heading[i]);
@@ -1692,18 +1708,36 @@
       // «Знайомство:» — рядок із двокрапкою наприкінці й без знака питання — теж заголовок.
       if (!found && /:$/.test(line) && line.indexOf("?") === -1) found = line.slice(0, -1);
       if (found) {
-        block = found.replace(/^#+\s*/, "").replace(/[*_`]+/g, "").trim();
+        block = found.replace(/^#+\s*/, "").trim();
         last = null;
+        inChecklist = false;
         return;
       }
+
       var bullet = /^[-*•]\s+/.test(line);
-      var numbered = /^\d+[.)]\s+/.test(line);
-      line = line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
-      if (!line) return;
+      var paren = line.match(/^(\d+)\)\s+/);
+      var dotted = line.match(/^(\d+)\.\s+/);
+      var number = paren ? parseInt(paren[1], 10) : (dotted ? parseInt(dotted[1], 10) : 0);
+      var content = line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
+      if (!content) return;
+
+      if (inChecklist && last) {
+        // У чеклісті: «1)» і «-» — пункти. «N.» — нове питання лише коли N — наступний
+        // номер питання; інакше це теж пункт.
+        // Коли «N.» збігається і з наступним питанням, і з наступним пунктом — вирішує
+        // знак питання наприкінці: пункти шпаргалки зазвичай не питання.
+        var nextPoint = last.must_learn.length - checklistStart + 1;
+        var isQuestion = dotted && number === lastNumber + 1 &&
+          (number !== nextPoint || /\?$/.test(content));
+        if (!isQuestion && (bullet || paren || dotted)) { last.must_learn.push(content); return; }
+        inChecklist = false;
+      }
       // «- …» одразу під пронумерованим питанням — пункт його чекліста, а не нове питання.
-      if (bullet && last && lastNumbered) { last.must_learn.push(line); return; }
-      last = { text: line, must_learn: [], block: block };
-      lastNumbered = numbered;
+      if (bullet && last && lastNumbered) { last.must_learn.push(content); return; }
+
+      last = { text: content, must_learn: [], block: block };
+      lastNumbered = !!(paren || dotted);
+      if (lastNumbered) lastNumber = number;
       out.push(last);
     });
     return out;
@@ -1801,23 +1835,28 @@
   var IMPORT_PROMPT = [
     "Ти допомагаєш дослідниці підготувати гайд для глибинного інтервʼю. Склади список питань для такого дослідження: [ВСТАВТЕ СЮДИ МЕТУ ДОСЛІДЖЕННЯ І ХТО РЕСПОНДЕНТИ].",
     "",
-    "Дай відповідь ЛИШЕ текстом файлу, без вступу й пояснень, у такому форматі:",
+    "Дай відповідь ЛИШЕ текстом файлу, без вступу, пояснень і розмітки Markdown (без жирного шрифту, таблиць, блоків коду), у такому форматі:",
     "",
     "Блок: Назва смислового блоку",
     "1. Текст питання, яке почує респондент?",
-    "- про що варто почути у відповіді (необовʼязково, 2–4 пункти)",
-    "- ще один пункт",
+    "Про що варто сказати:",
+    "1) перший пункт шпаргалки",
+    "2) другий пункт шпаргалки",
     "2. Наступне питання?",
+    "Про що варто сказати:",
+    "1) пункт",
     "",
     "Блок: Назва наступного блоку",
     "3. Питання наступного блоку?",
     "",
     "Правила:",
+    "- Назва блоку стоїть лише в рядку «Блок: …» і більше ніде. У тексті питань назв блоків немає.",
+    "- Питання нумеруються наскрізно: 1., 2., 3. через усі блоки (цифра й крапка). Блоки не нумеруй.",
+    "- Під кожним питанням — рядок «Про що варто сказати:», а під ним 2–4 пункти шпаргалки, ПРОНУМЕРОВАНІ окремо для кожного питання: 1), 2), 3) (цифра й дужка, щоб їх не плутати з питаннями). Це підказка для дослідниці про те, що варто почути у відповіді, а не текст для респондента.",
     "- 3–6 блоків за логікою розмови: від знайомства й контексту до деталей і підсумку.",
-    "- У кожному блоці 2–5 питань, усього не більше 30; нумерація питань наскрізна.",
+    "- У кожному блоці 2–5 питань, усього не більше 30.",
     "- Питання відкриті («Розкажіть…», «Як…», «Що…»): одне питання — одна думка, без підказок відповіді й без закритих «так/ні».",
-    "- Питання звернені до респондента на «ви», природною розмовною мовою.",
-    "- Рядки зі знаком «-» — це шпаргалка для дослідниці, а не текст для респондента; став їх лише одразу під питанням."
+    "- Питання звернені до респондента на «ви», природною розмовною мовою."
   ].join("\n");
 
   function copyImportPrompt(button) {
