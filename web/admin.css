@@ -102,12 +102,12 @@ body.admin[data-theme="dark"] {
      одиниць) — у референсах завжди чітко видно 2-3 рівні ваги тексту, тут
      же на око все виглядало одним й тим самим сірим. Розведено так само
      контрастно, як і в світлій темі (там розрив 212529→495057 помітний). */
-  --text: #e6e6e8; --muted: #97979e; --danger: #ff6b6b; --on-danger: #141414;
+  --text: #e6e6e8; --muted: #97979e; --danger: #ff5c5c; --on-danger: #141414;
   --good: #69db7c; --warn: #ffa94d; --check: #38d9a9; --info: #ffab7a;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .3), 0 10px 15px -5px rgba(0, 0, 0, .3), 0 7px 7px -5px rgba(0, 0, 0, .2);
 }
 body.admin[data-theme="light"] {
-  --text: #292521; --muted: #575049; --danger: #c92a2a; --on-danger: #fff;
+  --text: #292521; --muted: #575049; --danger: #dc2626; --on-danger: #fff;
   --good: #277c38; --warn: #c3410e; --check: #087f5b;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .05), 0 10px 15px -5px rgba(0, 0, 0, .05), 0 7px 7px -5px rgba(0, 0, 0, .04);
 }
@@ -1794,3 +1794,14 @@ body.admin .space-menu-item.is-danger:hover, body.admin .space-menu-item.is-dang
 /* Хрестик пункту чекліста впритул до поля й до краю картки: вузька кнопка без
    зайвих полів, а не 40-пікселний квадрат з іконкою по центру. */
 .must-learn-remove { min-width: 24px; width: 24px; padding: 0; margin: 0 -6px 0 -4px; }
+
+/* Червоний «застереження» в адмінці — живіший, ніж базовий (той тьмяніший):
+   світла тема #dc2626 (4.8:1 на білому), темна #ff5c5c (5.6:1 на --surface).
+   Лише для .admin: сторінка респондента лишається зі своїм --danger. Стоїть
+   для всіх станів теми, зокрема коли явного вибору немає й тема — системна. */
+body.admin { --danger: #dc2626; }
+@media (prefers-color-scheme: dark) {
+  body.admin:not([data-theme="light"]) { --danger: #ff5c5c; }
+}
+body.admin[data-theme="light"] { --danger: #dc2626; }
+body.admin[data-theme="dark"] { --danger: #ff5c5c; }
