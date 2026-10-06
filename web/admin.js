@@ -779,6 +779,7 @@
   function renderTopicCards(topics) {
     var host = el("guide-topics-list");
     host.innerHTML = "";
+    clearImportedDocs();
     var current = null;
     var currentName = null;
     (topics || []).forEach(function (topic) {
@@ -1677,6 +1678,8 @@
       new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d*\\s*[:.\\-–—)]\\s*(.+)$", "i")
     ];
     var bare = new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d+$", "i");
+    var last = null;        // останнє питання — до нього відносяться рядки зі «-»
+    var lastNumbered = false;
     text.split(/\r?\n/).forEach(function (raw) {
       var line = raw.trim();
       if (!line) return;
@@ -1688,9 +1691,20 @@
       if (!found && bare.test(line)) found = line;
       // «Знайомство:» — рядок із двокрапкою наприкінці й без знака питання — теж заголовок.
       if (!found && /:$/.test(line) && line.indexOf("?") === -1) found = line.slice(0, -1);
-      if (found) { block = found.replace(/^#+\s*/, "").replace(/[*_`]+/g, "").trim(); return; }
+      if (found) {
+        block = found.replace(/^#+\s*/, "").replace(/[*_`]+/g, "").trim();
+        last = null;
+        return;
+      }
+      var bullet = /^[-*•]\s+/.test(line);
+      var numbered = /^\d+[.)]\s+/.test(line);
       line = line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
-      if (line) out.push({ text: line, must_learn: [], block: block });
+      if (!line) return;
+      // «- …» одразу під пронумерованим питанням — пункт його чекліста, а не нове питання.
+      if (bullet && last && lastNumbered) { last.must_learn.push(line); return; }
+      last = { text: line, must_learn: [], block: block };
+      lastNumbered = numbered;
+      out.push(last);
     });
     return out;
   }
@@ -1706,7 +1720,7 @@
 
   /* Питання з назвою блоку йдуть у блок із такою назвою (існуючий або новий);
      без назви — в останній блок, як було до появи блоків. */
-  function appendImportedQuestions(questions) {
+  function appendImportedQuestions(questions, importId) {
     var fallback = lastBlockCards();
     var hosts = {};
     blockEls().forEach(function (block) {
@@ -1725,10 +1739,98 @@
         }
         host = hosts[q.block];
       }
-      host.appendChild(buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn }));
+      var card = buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn });
+      card._importId = importId;
+      host.appendChild(card);
     });
     refreshTopicOrderControls();
     return newBlocks;
+  }
+
+  /* Документи, з яких зараз у редакторі є питання. Видалення документа
+     прибирає всі його питання (блок, що спорожнів, зникає разом із ними).
+     Після збереження гайда питання вже частина гайда, тож список очищується. */
+  var importSeq = 0;
+
+  function clearImportedDocs() {
+    var host = el("import-docs");
+    if (host) host.innerHTML = "";
+  }
+
+  function addImportedDoc(importId, name, count, newBlocks) {
+    var row = document.createElement("div");
+    row.className = "import-result";
+    row.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
+    var nameNode = document.createElement("span");
+    nameNode.className = "import-name";
+    nameNode.textContent = name;
+    row.appendChild(nameNode);
+    var countNode = document.createElement("span");
+    countNode.className = "import-count";
+    var message = count + " " + pluralQuestions(count);
+    if (newBlocks) message += ", нових блоків: " + newBlocks;
+    countNode.textContent = message;
+    row.appendChild(countNode);
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon-btn import-dismiss";
+    remove.title = "Видалити документ разом із його питаннями";
+    remove.setAttribute("aria-label", "Видалити документ разом із його питаннями");
+    remove.innerHTML = ICONS.trash;
+    remove.addEventListener("click", function () { removeImportedDoc(importId, name, row); });
+    row.appendChild(remove);
+    el("import-docs").appendChild(row);
+  }
+
+  function removeImportedDoc(importId, name, row) {
+    var cards = topicCards().filter(function (card) { return card._importId === importId; });
+    if (cards.length && !window.confirm(
+        "Видалити документ «" + name + "» разом із його питаннями (" + cards.length + ")?")) return;
+    cards.forEach(function (card) { card.remove(); });
+    refreshTopicOrderControls();
+    // Гайд без жодного питання не збережеться — лишаємо порожню картку, щоб редактор не був порожнім.
+    if (!topicCards().length) {
+      var block = buildBlock("");
+      block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
+      el("guide-topics-list").appendChild(block);
+      refreshTopicOrderControls();
+    }
+    row.remove();
+  }
+
+  var IMPORT_PROMPT = [
+    "Ти допомагаєш дослідниці підготувати гайд для глибинного інтервʼю. Склади список питань для такого дослідження: [ВСТАВТЕ СЮДИ МЕТУ ДОСЛІДЖЕННЯ І ХТО РЕСПОНДЕНТИ].",
+    "",
+    "Дай відповідь ЛИШЕ текстом файлу, без вступу й пояснень, у такому форматі:",
+    "",
+    "Блок: Назва смислового блоку",
+    "1. Текст питання, яке почує респондент?",
+    "- про що варто почути у відповіді (необовʼязково, 2–4 пункти)",
+    "- ще один пункт",
+    "2. Наступне питання?",
+    "",
+    "Блок: Назва наступного блоку",
+    "3. Питання наступного блоку?",
+    "",
+    "Правила:",
+    "- 3–6 блоків за логікою розмови: від знайомства й контексту до деталей і підсумку.",
+    "- У кожному блоці 2–5 питань, усього не більше 30; нумерація питань наскрізна.",
+    "- Питання відкриті («Розкажіть…», «Як…», «Що…»): одне питання — одна думка, без підказок відповіді й без закритих «так/ні».",
+    "- Питання звернені до респондента на «ви», природною розмовною мовою.",
+    "- Рядки зі знаком «-» — це шпаргалка для дослідниці, а не текст для респондента; став їх лише одразу під питанням."
+  ].join("\n");
+
+  function copyImportPrompt(button) {
+    var done = function () {
+      var original = button.textContent;
+      button.textContent = "Скопійовано";
+      setTimeout(function () { button.textContent = original; }, 1800);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(IMPORT_PROMPT).then(done, function () { window.prompt("Скопіюйте промпт:", IMPORT_PROMPT); });
+    } else {
+      window.prompt("Скопіюйте промпт:", IMPORT_PROMPT);
+    }
   }
 
   function importQuestionsFile(file) {
@@ -1744,12 +1846,9 @@
       catch (err) { errorNode.textContent = "Файл не схожий на список питань: " + err.message; return; }
       if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
       if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
-      var newBlocks = appendImportedQuestions(questions);
-      el("import-name").textContent = file.name;
-      var message = "Додано " + questions.length + " " + pluralQuestions(questions.length);
-      if (newBlocks) message += ", нових блоків: " + newBlocks;
-      el("import-count").textContent = message + ". Натисніть «Зберегти гайд».";
-      el("import-result").classList.remove("hidden");
+      importSeq += 1;
+      var newBlocks = appendImportedQuestions(questions, importSeq);
+      addImportedDoc(importSeq, file.name, questions.length, newBlocks);
     };
     reader.readAsText(file, "utf-8");
   }
@@ -1772,7 +1871,7 @@
     drop.addEventListener("drop", function (event) {
       importQuestionsFile(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]);
     });
-    el("import-dismiss").addEventListener("click", function () { el("import-result").classList.add("hidden"); });
+    el("import-copy-prompt").addEventListener("click", function () { copyImportPrompt(el("import-copy-prompt")); });
   })();
 
   el("btn-add-block").addEventListener("click", addBlock);

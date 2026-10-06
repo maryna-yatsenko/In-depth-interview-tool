@@ -1581,10 +1581,10 @@ body.admin .must-learn-add .icon, body.admin .add-topic .icon { order: 0; width:
 
 /* Імпорт списку питань: одна компактна зона файлу. Пунктирна рамка каже «сюди можна
    кинути файл», а після вибору зона лишається, і під нею зʼявляється рядок з результатом. */
-.import-box { margin-bottom: 16px; }
+.import-box { position: relative; margin-bottom: 16px; }
 .import-drop {
   display: flex; align-items: center; gap: 14px; cursor: pointer;
-  padding: 12px 16px; border-radius: var(--radius-sm);
+  padding: 12px 56px 12px 16px; border-radius: var(--radius-sm);
   background: var(--surface); border: 1px dashed color-mix(in srgb, var(--muted) 40%, var(--line));
   transition: border-color .15s, background .15s;
 }
@@ -1688,3 +1688,36 @@ body.admin .must-learn-add:hover { text-decoration: underline; color: var(--head
   background: var(--surface); color: var(--text);
   border-color: color-mix(in srgb, var(--muted) 55%, var(--line));
 }
+
+/* Підказка про формат документа: «?» у куті зони завантаження, текст — на
+   наведенні/фокусі й лишається, поки курсор у ній (там є кнопка промпта). */
+.import-help-wrap { position: absolute; top: 12px; right: 12px; }
+.import-help {
+  width: 28px; height: 28px; min-width: 28px; padding: 0; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted);
+  font-size: 14px; font-weight: 700; line-height: 1;
+}
+.import-help-wrap:hover .import-help, .import-help:focus-visible {
+  color: var(--primary-fill); border-color: var(--primary-fill);
+}
+.import-tip {
+  display: none; position: absolute; z-index: 40; top: 100%; right: 0;
+  width: 380px; margin-top: 8px; padding: 14px 16px; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  box-shadow: 0 16px 40px -12px rgba(20, 20, 20, .35), 0 2px 6px rgba(20, 20, 20, .08);
+  font-size: 13px; line-height: 1.5; color: var(--text);
+}
+/* Невидимий місток між «?» і підказкою, щоб курсор не «відривався» від wrap по дорозі. */
+.import-tip::before { content: ""; position: absolute; left: 0; right: 0; top: -10px; height: 10px; }
+.import-help-wrap:hover .import-tip, .import-help-wrap:focus-within .import-tip { display: block; }
+.import-tip strong { display: block; margin-bottom: 6px; font-size: 14px; }
+.import-tip ul { margin: 0 0 10px; padding-left: 18px; color: var(--muted); }
+.import-tip li + li { margin-top: 4px; }
+.import-tip code { font-size: 12px; color: var(--text); background: var(--muted-tint); padding: 1px 5px; border-radius: 4px; }
+.import-example {
+  margin: 0 0 12px; padding: 8px 10px; font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+  background: var(--muted-tint); border-radius: 6px; color: var(--text);
+}
+.import-docs:not(:empty) { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.import-docs .import-result { margin-top: 0; }
+.import-docs .import-dismiss { width: 32px; height: 32px; min-width: 32px; padding: 0; align-self: center; font-size: 14px; }
