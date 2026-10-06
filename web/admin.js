@@ -274,6 +274,25 @@
   // вони б «смикались» туди-сюди, реагуючи на власний рух.
   function flipReady() { return Date.now() - lastFlipAt > 120; }
 
+  // Відпустили — усе одразу стає на місце: дорожчі анімації не доїжджають.
+  function snapAll(root, selector) {
+    Array.prototype.forEach.call(root.querySelectorAll(selector), function (node) {
+      if (node.getAnimations) node.getAnimations().forEach(function (a) { a.finish(); });
+    });
+  }
+
+  // Якщо відпустити поза «правильним» місцем, браузер програє анімацію «картка
+  // летить назад». Перетягування наших елементів приймаємо де завгодно на сторінці —
+  // тоді картка просто лишається там, де її поставили.
+  document.addEventListener("dragover", function (event) {
+    if (!document.querySelector(".dragging")) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  });
+  document.addEventListener("drop", function (event) {
+    if (document.querySelector(".dragging")) event.preventDefault();
+  });
+
   function wireSpaceDrag(li) {
     li.addEventListener("dragstart", function (event) {
       spaceDrag = li;
@@ -284,6 +303,7 @@
     li.addEventListener("dragend", function () {
       li.classList.remove("dragging");
       spaceDrag = null;
+      snapAll(li.parentNode || document, "li.space-item");
       saveSpaceOrder();
     });
     li.addEventListener("dragover", function (event) {
@@ -414,6 +434,7 @@
     });
     handle.addEventListener("dragend", function () {
       row.classList.remove("dragging");
+      if (row.parentNode) snapAll(row.parentNode, ".must-learn-item");
       renumberMustLearnItems(row.parentNode);
     });
     row.addEventListener("dragover", function (e) {
@@ -712,6 +733,7 @@
     list.addEventListener("dragend", function () {
       if (dragging) dragging.classList.remove("dragging");
       dragging = null;
+      snapAll(list, ".reorder-row, .reorder-block");
       renumberReorderRows();
     });
     list.addEventListener("dragover", function (e) {

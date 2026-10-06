@@ -1734,7 +1734,7 @@ body.admin .clear-all:hover .icon { color: var(--danger); }
 .space-menu-btn {
   position: absolute; top: 8px; right: 8px; width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
-  border-radius: 6px; color: var(--rail-muted); opacity: 0; transition: opacity .12s, background .12s;
+  border-radius: 6px; color: var(--rail-muted); transition: background .12s;
 }
 .space-menu-btn svg { width: 16px; height: 16px; }
 #space-list li.space-item:hover .space-menu-btn,
@@ -1743,9 +1743,8 @@ body.admin .clear-all:hover .icon { color: var(--danger); }
 .space-menu-btn:hover, .space-menu-btn:focus-visible {
   background: color-mix(in srgb, var(--rail-text) 10%, transparent); color: var(--rail-text); outline: none;
 }
-@media (hover: none) { .space-menu-btn { opacity: 1; } }
 .rail-collapsed .space-menu-btn { display: none; }
-#space-list li.space-item:hover button { padding-right: 44px; }
+.app:not(.rail-collapsed) #space-list li.space-item button { padding-right: 44px; }
 .space-menu {
   position: fixed; z-index: 60; min-width: 176px; padding: 6px;
   display: flex; flex-direction: column; gap: 2px;
@@ -1767,9 +1766,7 @@ body.admin .space-menu-item.is-danger:hover, body.admin .space-menu-item.is-dang
 
 /* Перше слово про перетягування: елемент «у руці» блідне,
    решта плавно ковзає на його місце (сам рух — у admin.js, flipMove). */
-#space-list li.space-item, .reorder-row, .reorder-block, .must-learn-item {
-  transition: opacity .2s ease, box-shadow .2s ease;
-}
+#space-list li.space-item, .reorder-row, .reorder-block, .must-learn-item { transition: none; }
 #space-list li.space-item.dragging, .reorder-row.dragging, .must-learn-item.dragging { opacity: .35; }
 .reorder-row, .reorder-block-head, .must-learn-handle { cursor: grab; }
 .reorder-row:active, .reorder-block-head:active, .must-learn-handle:active { cursor: grabbing; }
@@ -1793,3 +1790,7 @@ body.admin .space-menu-item.is-danger:hover, body.admin .space-menu-item.is-dang
 .must-learn-remove { color: var(--muted); opacity: .35; transition: opacity .15s ease, color .15s ease; }
 .must-learn-item:hover .must-learn-remove { opacity: 1; }
 .must-learn-remove:hover:not(:disabled) { opacity: 1; color: var(--danger); }
+
+/* Хрестик пункту чекліста впритул до поля й до краю картки: вузька кнопка без
+   зайвих полів, а не 40-пікселний квадрат з іконкою по центру. */
+.must-learn-remove { min-width: 24px; width: 24px; padding: 0; margin: 0 -6px 0 -4px; }
