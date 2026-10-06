@@ -136,6 +136,42 @@ class TestConfig(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+class TestQuestionLook(unittest.TestCase):
+    """Вигляд тексту питання задає дослідник: неправильне значення має падати на старті."""
+
+    def _guide(self, **extra):
+        with open(os.path.join(EXAMPLE, "guides", "first.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+        data.update(extra)
+        tmp = tempfile.mkdtemp()
+        return load_guide(write(tmp, "g.json", data))
+
+    def test_defaults_are_medium_regular(self):
+        guide = self._guide()
+        self.assertEqual(guide.question_font_size, "medium")
+        self.assertEqual(guide.question_font_weight, "regular")
+
+    def test_known_values_accepted(self):
+        guide = self._guide(question_font_size="large", question_font_weight="bold")
+        self.assertEqual((guide.question_font_size, guide.question_font_weight), ("large", "bold"))
+
+    def test_feedback_styles_accepted(self):
+        for style in ("stars", "emoji", "hearts", "numbers"):
+            self.assertEqual(self._guide(feedback_style=style).feedback_style, style)
+
+    def test_unknown_feedback_style_rejected(self):
+        with self.assertRaises(ConfigError):
+            self._guide(feedback_style="rockets")
+
+    def test_unknown_size_rejected(self):
+        with self.assertRaises(ConfigError):
+            self._guide(question_font_size="huge")
+
+    def test_unknown_weight_rejected(self):
+        with self.assertRaises(ConfigError):
+            self._guide(question_font_weight="black")
+
+
 class TestRespondentWording(unittest.TestCase):
     """Дві аудиторії — дві назви теми.
 

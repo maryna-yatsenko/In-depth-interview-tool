@@ -906,8 +906,11 @@
       el("btn-voice-again").disabled = state.busy || !has;
       // Навігація вгорі — лише в сценарному режимі: у вільній розмові кроку
       // немає, наступне питання ставить сама модель у відповідь на репліку.
-      var nav = el("voice-confirm");
-      if (nav) nav.classList.toggle("hidden", !state.scripted);
+      // «Раніше сказане» стоїть у тому ж ряду, тож ховаємо лише стрілки.
+      ["btn-prev", "btn-next"].forEach(function (id) {
+        var node = el(id);
+        if (node) node.classList.toggle("hidden", !state.scripted);
+      });
       el("btn-next").disabled = state.busy || !(has || state.answered);
       el("btn-prev").disabled = state.busy || state.atStart;
       renderWordProgress();
@@ -1019,6 +1022,16 @@
      взагалі, і «Тема 1 з 10» там не значить нічого. */
   /* Чекліст очікуваного: людина бачить, чого від неї чекають, і що вже
      зараховано. Це те саме, що вело уточнення всередині — просто видиме. */
+  /* Згорнути/розгорнути памʼятку: людина може прибрати її з очей. Стан живе, поки відкрита
+     сторінка, і діє на всі питання. */
+  function setChecklistCollapsed(collapsed) {
+    state.checklistCollapsed = collapsed;
+    var box = el("checklist");
+    var toggle = el("checklist-toggle");
+    if (box) box.classList.toggle("collapsed", collapsed);
+    if (toggle) toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  }
+
   function renderChecklist(items) {
     var box = el("checklist");
     var list = el("checklist-items");
@@ -1059,6 +1072,7 @@
     // саме питання.
     list.classList.toggle("two-cols", items.length > 6);
     box.classList.remove("hidden");
+    setChecklistCollapsed(!!state.checklistCollapsed);
     state.checklistItems = items;
   }
 
@@ -1066,6 +1080,10 @@
      в ньому питань і на скільки вже відповіли — а не позицію курсора, яку
      легко сплутати з «зроблено». У вільній розповіді (без сценарію) лічби
      немає — там рух видно по чеклісту тем, і крок показує лише назву фази. */
+  var NEXT_ARROW = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+
   function renderProgress(progress) {
     if (!progress) return;
     if (progress.phase) state.interviewPhase = progress.phase;
@@ -1077,7 +1095,14 @@
     // Останнє питання: кнопка каже, що буде далі, — інакше людина не знає, що
     // натискає завершення розмови.
     var next = el("btn-next");
-    if (next) next.textContent = state.atEnd ? "Завершити інтервʼю" : "Наступне питання →";
+    if (next) {
+      // Далі — стрілка без підпису. Лише на останньому питанні кнопці
+      // повертається підпис: це вже не «далі», а завершення розмови.
+      next.classList.toggle("is-finish", !!state.atEnd);
+      next.setAttribute("aria-label", state.atEnd ? "Завершити інтервʼю" : "Наступне питання");
+      next.title = state.atEnd ? "Завершити інтервʼю" : "Наступне питання";
+      next.innerHTML = state.atEnd ? "Завершити інтервʼю" : NEXT_ARROW;
+    }
 
     var host = el("progress-sections");
     var sections = progress.sections || [];
@@ -1375,7 +1400,11 @@
       // Кастомний акцент простору (space.accent) свідомо ігноруємо: сторінка
       // респондента завжди показує стандартний фіолетовий, в обох темах —
       // те саме поле в адмінці згодом приберуть як застаріле.
-      state.feedbackStyle = space.feedback_style === "emoji" ? "emoji" : "stars";
+      state.feedbackStyle = ["emoji", "hearts", "numbers"].indexOf(space.feedback_style) >= 0
+        ? space.feedback_style : "stars";
+      // Вигляд тексту питання задає дослідник (адмінка → «Вигляд питань»).
+      document.documentElement.setAttribute("data-q-size", space.question_font_size || "medium");
+      document.documentElement.setAttribute("data-q-weight", space.question_font_weight || "regular");
       el("feedback-title").textContent = space.feedback_prompt ||
         "Як вам було проходити це інтервʼю?";
       applyFeedbackStyle();
@@ -1390,15 +1419,26 @@
   // група радіо-кнопок, якою цей контрол уже й позначений в розмітці.
   var FEEDBACK_EMOJI = ["😞", "🙁", "😐", "🙂", "😄"];
 
+  var FEEDBACK_LABELS = ["Дуже погано", "Погано", "Нормально", "Добре", "Чудово"];
+  var FEEDBACK_HEART = '<svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.1C.9 8.6 2.8 5 6.2 5c2 0 3.3 1 3.8 2.1h4C14.5 6 15.8 5 17.8 5c3.4 0 5.3 3.6 3.8 6.9C19.5 16.4 12 21 12 21z"/></svg>';
+
   function applyFeedbackStyle() {
     // Стиль фіксується один раз при завантаженні сторінки (loadSpace
     // викликається лише тут, при старті) — повертати SVG назад нема
     // потреби, це не перемикач посеред сесії.
-    var isEmoji = state.feedbackStyle === "emoji";
-    el("feedback-stars").classList.toggle("emoji-mode", isEmoji);
-    if (!isEmoji) return;
+    var style = state.feedbackStyle;
+    ["emoji", "hearts", "numbers"].forEach(function (name) {
+      el("feedback-stars").classList.toggle(name + "-mode", style === name);
+    });
     document.querySelectorAll(".feedback-star").forEach(function (star) {
-      star.textContent = FEEDBACK_EMOJI[Number(star.dataset.value) - 1] || "";
+      var value = Number(star.dataset.value);
+      if (style === "emoji") {
+        star.innerHTML = '<span class="fe">' + (FEEDBACK_EMOJI[value - 1] || "") + '</span>' +
+          '<span class="fl">' + (FEEDBACK_LABELS[value - 1] || "") + '</span>';
+      }
+      else if (style === "numbers") star.textContent = String(value);
+      else if (style === "hearts") star.innerHTML = FEEDBACK_HEART;
     });
   }
 
@@ -1704,6 +1744,9 @@
   el("chk-record").addEventListener("change", syncStartButton);
   el("respondent-name").addEventListener("input", syncStartButton);
   el("btn-resume").addEventListener("click", resume);
+  el("checklist-toggle").addEventListener("click", function () {
+    setChecklistCollapsed(!state.checklistCollapsed);
+  });
   el("btn-restart").addEventListener("click", function () {
     forget(storeKey());
     el("resume-box").classList.add("hidden");
@@ -1792,7 +1835,8 @@
         // Зірки — заливка кумулятивна («3 з 5» лишає підсвіченими 1,2,3);
         // смайлики — обране почуття, а не кількість, тому підсвічується
         // лише один, обраний саме зараз.
-        var filled = state.feedbackStyle === "emoji" ? value === upTo : value <= upTo;
+        var single = state.feedbackStyle === "emoji" || state.feedbackStyle === "numbers";
+        var filled = single ? value === upTo : value <= upTo;
         star.classList.toggle("is-filled", filled);
       });
     }
@@ -1887,7 +1931,100 @@
   }
   watchBottomSpace();
 
-  loadSpace().then(offerResume).catch(function (err) {
+  /* ── DESIGN-CANVAS: стани за URL ─────────────────────────────────────
+     `?canvas=<стан>` приводить сторінку в названий стан через ТОЙ САМИЙ API й ті самі функції, що й
+     людина (старт, відповіді, кроки) — нічого не малюється окремо. Працює лише на localhost.
+     Стани: consent, consent-filled, resume, q-first, q-mid, q-last, history-empty, history-list,
+     summary, done, done-thanks. Суфікс `-dark` вмикає темну тему.
+     DELETE WITH: the design-canvas/ folder (canvas-app/), разом із цим блоком. */
+  function applyCanvasPin(pin) {
+    var host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") return offerResume();
+    if (/-dark$/.test(pin)) {
+      pin = pin.replace(/-dark$/, "");
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+    forget(storeKey());
+    var sample = "Це була дуже цікава ситуація, я добре її памʼятаю і можу розповісти детальніше про те, що саме відбувалося тоді.";
+    if (pin === "consent") return Promise.resolve();
+    if (pin === "consent-filled") {
+      el("respondent-name").value = "Олена Коваленко";
+      var chk = el("chk-record");
+      if (chk && !el("record-consent").classList.contains("hidden")) chk.checked = true;
+      syncStartButton();
+      return Promise.resolve();
+    }
+    return post("/api/start", { record_voice: false, respondent_name: "Олена Коваленко" }).then(function (started) {
+      if (pin === "resume") {
+        return post("/api/answer", { session_id: started.session_id, text: sample }).then(function () {
+          remember(storeKey(), started.session_id);
+          return offerResume();
+        });
+      }
+      var total = (started.progress && started.progress.depth && started.progress.depth.total) || 4;
+      var goal = { "q-first": 0, "history-empty": 0, "q-mid": 1, "q-mid-folded": 1, "q-last": total - 1, "history-list": 2, "summary": total, "done": total, "done-thanks": total,
+        "done-numbers": total, "done-hearts": total, "done-emoji": total,
+        "done-drum": total, "done-stars-4": total, "done-emoji-4": total, "done-hearts-4": total }[pin];
+      if (goal === undefined) return Promise.resolve();
+      var chain = Promise.resolve({ started: started, last: null });
+      var i;
+      function answerOne(prev) {
+        return post("/api/answer", { session_id: started.session_id, text: sample }).then(function (ans) {
+          return { started: started, last: ans };
+        });
+      }
+      function stepOne(prev) {
+        return post("/api/step", { session_id: started.session_id, delta: 1 }).then(function (nxt) {
+          return { started: started, last: nxt };
+        });
+      }
+      for (i = 0; i < goal; i++) {
+        (function (index) {
+          chain = chain.then(answerOne);
+          if (index < total - 1) chain = chain.then(stepOne);
+        })(i);
+      }
+      return chain.then(function (res) {
+        var atSummary = goal >= total;
+        enterInterview(res.last && !atSummary && res.last.utterance
+          ? Object.assign({ session_id: started.session_id }, res.last) : started);
+        state.sessionId = started.session_id;
+        if (atSummary) {
+          renderProgress(res.last.progress);
+          state.depth = (res.last.progress && res.last.progress.depth) || state.depth;
+          showSummary();
+          if (/^done/.test(pin)) {
+            return post("/api/finish", { session_id: started.session_id }).then(function (fin) {
+              finishToDoneScreen(fin.utterance);
+              if (pin === "done-drum") document.documentElement.setAttribute("data-canvas-hold", "drum");
+              var variant = /^done-(numbers|hearts|emoji)(-4)?$/.exec(pin);
+              if (variant) { state.feedbackStyle = variant[1]; applyFeedbackStyle(); }
+              // Вибір четвертої оцінки справжнім кліком: видно вибраний стан рейтингу.
+              if (/-4$/.test(pin)) {
+                var fourth = document.querySelector('.feedback-star[data-value="4"]');
+                if (fourth) fourth.click();
+              }
+              if (pin === "done-thanks") {
+                el("feedback-block").classList.add("hidden");
+                el("feedback-thanks").classList.remove("hidden");
+              }
+            });
+          }
+        }
+        if (pin === "history-empty" || pin === "history-list") openHistory();
+        if (pin === "q-mid-folded") setChecklistCollapsed(true);
+      });
+    });
+  }
+
+  var canvasPin = new URLSearchParams(window.location.search).get("canvas");
+  loadSpace().then(function () {
+    if (!canvasPin) return offerResume();
+    /* Сигнал для capture.mjs: стан застосовано (контракт design-canvas). */
+    return applyCanvasPin(canvasPin).then(function () {
+      document.documentElement.setAttribute("data-canvas-pinned", canvasPin);
+    });
+  }).catch(function (err) {
     el("capabilities").textContent = "Не вдалося завантажити конфіг: " + err.message;
   });
 })();

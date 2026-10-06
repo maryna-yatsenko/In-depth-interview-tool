@@ -7,3 +7,4 @@ design-system
 __pycache__
 *.pyc
 .DS_Store
+canvas-app

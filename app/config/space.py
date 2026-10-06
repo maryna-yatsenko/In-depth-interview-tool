@@ -122,6 +122,10 @@ class Guide:
     # відрізнятись між гайдами того самого простору.
     feedback_prompt: str = ""
     feedback_style: str = "stars"
+    # Як респондент бачить текст питання: розмір і накреслення задає
+    # дослідник, а не код (раніше «Раніше сказане» завжди було жирним).
+    question_font_size: str = "medium"
+    question_font_weight: str = "regular"
 
 
 def _require(data: Dict[str, Any], keys: List[str], where: str) -> None:
@@ -269,10 +273,23 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
         )
 
     feedback_style = data.get("feedback_style", "stars")
-    if feedback_style not in ("stars", "emoji"):
+    if feedback_style not in ("stars", "emoji", "hearts", "numbers"):
         raise ConfigError(
-            "%s → feedback_style: '%s' невідомий. Допустимі: stars, emoji."
+            "%s → feedback_style: '%s' невідомий. Допустимі: stars, emoji, hearts, numbers."
             % (os.path.basename(path), feedback_style)
+        )
+
+    question_font_size = data.get("question_font_size", "medium")
+    if question_font_size not in ("small", "medium", "large"):
+        raise ConfigError(
+            "%s → question_font_size: '%s' невідомий. Допустимі: small, medium, large."
+            % (os.path.basename(path), question_font_size)
+        )
+    question_font_weight = data.get("question_font_weight", "regular")
+    if question_font_weight not in ("regular", "medium", "bold"):
+        raise ConfigError(
+            "%s → question_font_weight: '%s' невідомий. Допустимі: regular, medium, bold."
+            % (os.path.basename(path), question_font_weight)
         )
 
     # Підсумкові питання приймаємо і рядками, і обʼєктами {text, expects}:
@@ -304,6 +321,8 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
         closing_expects=closing_expects,
         feedback_prompt=data.get("feedback_prompt", ""),
         feedback_style=feedback_style,
+        question_font_size=question_font_size,
+        question_font_weight=question_font_weight,
         opening_expects=data.get("opening_expects", []),
     )
 

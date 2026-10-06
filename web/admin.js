@@ -11,7 +11,6 @@
   var el = function (id) { return document.getElementById(id); };
   var state = { spaces: [], space: null, guide: null, guideData: null, spaceData: null,
                 trash: [], runs: [] };
-  var accentSwatchPaint = function () {};
   var setRailCollapsed = function () {};
 
   /* Векторні іконки замість емодзі — розмітка статична (нема користувацького
@@ -68,7 +67,7 @@
      завжди йшли б у той простір, з яким запущено сервер, — незалежно від
      того, яке дослідження зараз відкрите в адмінці). */
   function copyRespondentLink() {
-    var url = location.origin + "/?space=" + encodeURIComponent(state.space || "");
+    var url = (state.respondentUrl || location.origin).replace(/\/$/, "") + "/?space=" + encodeURIComponent(state.space || "");
     var btn = el("btn-copy-link");
     var tip = btn.querySelector(".tooltip");
     if (!(navigator.clipboard && navigator.clipboard.writeText)) {
@@ -80,7 +79,7 @@
       tip.textContent = "Скопійовано";
       setTimeout(function () {
         btn.classList.remove("copied");
-        tip.textContent = "Скопіювати";
+        tip.textContent = "Скопіювати посилання на форму";
       }, 2000);
     }).catch(function () { flash("Не вдалося скопіювати посилання", "bad"); });
   }
@@ -105,20 +104,35 @@
       button.className = state.space === space.key ? "active" : "";
       button.innerHTML = ICONS.folder;
 
+      var draftTag = null;
       var text = document.createElement("span");
       text.className = "space-list-text";
       text.appendChild(document.createTextNode(space.title || space.key));
       if (space.draft) {
         var tag = document.createElement("span");
         tag.className = "draft-tag";
-        tag.textContent = "чернетка";
-        text.appendChild(tag);
+        tag.textContent = "Чернетка";
+        draftTag = tag;
       }
-      if (space.created_at) {
-        var created = document.createElement("span");
-        created.className = "space-date";
-        created.textContent = formatDate(space.created_at);
-        text.appendChild(created);
+      // Рядок «дата | статус»: горизонтальний автолейаут по одній осі, між ними тонкий вертикальний розділювач.
+      if (space.created_at || draftTag) {
+        var meta = document.createElement("span");
+        meta.className = "space-meta";
+        if (space.created_at) {
+          var created = document.createElement("span");
+          created.className = "space-date";
+          created.textContent = formatDate(space.created_at);
+          meta.appendChild(created);
+        }
+        if (draftTag) {
+          if (space.created_at) {
+            var divider = document.createElement("span");
+            divider.className = "space-divider";
+            meta.appendChild(divider);
+          }
+          meta.appendChild(draftTag);
+        }
+        text.appendChild(meta);
       }
       if (space.error) {
         var sub = document.createElement("span");
@@ -182,6 +196,10 @@
       el("guide-feedback-prompt").value = data.feedback_prompt || "";
       el("guide-feedback-style").value = data.feedback_style || "stars";
       selects.feedbackStyle.refresh();
+      el("guide-question-size").value = data.question_font_size || "medium";
+      el("guide-question-weight").value = data.question_font_weight || "regular";
+      selects.questionSize.refresh();
+      selects.questionWeight.refresh();
       renderTopicCards(data.topics || []);
       el("guide-error").textContent = "";
     }).catch(function (err) { el("guide-error").textContent = err.message; });
@@ -570,7 +588,7 @@
     var addPoint = document.createElement("button");
     addPoint.type = "button";
     addPoint.className = "ghost small must-learn-add";
-    addPoint.textContent = "+ додати пункт";
+    addPoint.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>' + "<span>додати пункт</span>";
     addPoint.addEventListener("click", function () {
       mustLearnList.appendChild(buildMustLearnRow(""));
       renumberMustLearnItems(mustLearnList);
@@ -611,7 +629,8 @@
     });
   }
 
-  function saveGuide() {
+  function saveGuide(options) {
+    var quiet = !!(options && options.quiet);
     var payload = Object.assign({}, state.guideData || {}, {
       key: state.guide,
       goal: el("guide-goal").value.trim(),
@@ -620,6 +639,8 @@
       max_turns: parseInt(el("guide-max-turns").value, 10) || 30,
       feedback_prompt: el("guide-feedback-prompt").value.trim(),
       feedback_style: el("guide-feedback-style").value,
+      question_font_size: el("guide-question-size").value,
+      question_font_weight: el("guide-question-weight").value,
       topics: collectTopicsFromCards()
     });
     // Застарілі поля колишньої «драбини заглиблення»: рушій їх більше не
@@ -627,9 +648,9 @@
     delete payload.deepening;
     delete payload.generalization_markers;
     el("guide-error").textContent = "";
-    post("/api/admin/guide", { space: state.space, guide: state.guide, data: payload })
+    return post("/api/admin/guide", { space: state.space, guide: state.guide, data: payload })
       .then(function () {
-        flash("Гайд збережено", "ok");
+        if (!quiet) flash("Гайд збережено", "ok");
         state.guideData = payload;
         // Перемальовуємо картки: нові питання отримали справжній id щойно
         // зараз — доти запис голосу для них був недоступний.
@@ -638,6 +659,7 @@
       .catch(function (err) {
         el("guide-error").textContent = err.message;
         flash("Не збережено", "bad");
+        throw err;
       });
   }
 
@@ -652,8 +674,6 @@
       renderStatusChip(data.draft);
       el("space-mode").value = ((data.interface || {}).mode) || "text";
       selects.mode.refresh();
-      el("space-accent").value = (data.branding || {}).accent || "";
-      accentSwatchPaint();
       el("space-error").textContent = "";
     }).catch(function (err) { el("space-error").textContent = err.message; });
   }
@@ -677,14 +697,19 @@
       // одно підмінює env-змінна (LLM_PROVIDER_OVERRIDE/TTS_PROVIDER_OVERRIDE),
       // тож редагування тут лише вводило б в оману. Що вже було в конфізі —
       // лишається незмінним через base.
-      branding: Object.assign({}, base.branding || {}, {
-        accent: el("space-accent").value.trim()
-      })
+      // Акцентний колір з адмінки прибрано: сторінка респондента його і так ігнорувала. Що вже було
+      // в конфізі — лишається незмінним.
+      branding: Object.assign({}, base.branding || {})
     });
     el("space-error").textContent = "";
     post("/api/admin/space", { space: state.space, data: payload })
       .then(function () {
         state.spaceData = payload;
+        // «Вигляд питань» і «Оцінка досвіду» тепер у налаштуваннях, а живуть у гайді, тож цей
+        // «Зберегти» зберігає й їх.
+        return state.guide ? saveGuide({ quiet: true }) : null;
+      })
+      .then(function () {
         flash("Збережено", "ok");
         return refresh();
       })
@@ -1061,12 +1086,32 @@
         host.appendChild(node);
       });
 
-      (data.turns || []).forEach(function (turn) {
+      /* Розмова поділена на блоки «Питання N»: питання інтервʼюера й відповідь
+         респондента стоять разом, а не суцільним списком реплік. Останній
+         блок без відповіді — це прощання, а не питання. */
+      var turnsAll = data.turns || [];
+      var group = null;
+      var questionNumber = 0;
+      turnsAll.forEach(function (turn, index) {
+        if (turn.role === "interviewer") {
+          var answered = turnsAll[index + 1] && turnsAll[index + 1].role === "respondent";
+          group = document.createElement("section");
+          group.className = "qa-group";
+          var heading = document.createElement("h3");
+          heading.className = "qa-heading";
+          heading.textContent = answered || index < turnsAll.length - 1
+            ? "Питання " + (++questionNumber) : "Завершення";
+          group.appendChild(heading);
+          host.appendChild(group);
+        } else if (!group) {
+          group = document.createElement("section");
+          group.className = "qa-group";
+          host.appendChild(group);
+        }
         var node = document.createElement("div");
         node.className = "turn " + turn.role;
         node.innerHTML = "<div class='who'>" +
-          (turn.role === "interviewer" ? "інтервʼюер" : "респондент") +
-          (turn.topic_id ? (" · " + turn.topic_id) : "") + "</div>";
+          (turn.role === "interviewer" ? "інтервʼюер" : "респондент") + "</div>";
         // Запис голосу — перед текстом, не після: дослідник спершу чує,
         // потім звіряє з тим, що модель розпізнала як текст цієї ж репліки.
         if (turn.voice && turn.voice.length) {
@@ -1092,7 +1137,7 @@
           }).join(", ");
           node.appendChild(mask);
         }
-        host.appendChild(node);
+        group.appendChild(node);
       });
       host.scrollTop = 0;
       el("transcript-modal").classList.remove("hidden");
@@ -1105,6 +1150,153 @@
 
   function closeTranscript() {
     el("transcript-modal").classList.add("hidden");
+  }
+
+  /* ── вивантаження всіх даних ──────────────────────────────────────────
+     Один Markdown-файл на все дослідження: без нових залежностей (жодної
+     .docx-бібліотеки офлайн не поставити), без бекенд-ендпоінта — ті самі
+     дані, які вже віддає /api/admin/transcript для модалки "Деталі", лише
+     довантажені по черзі для кожної сесії списку. Аудіо-плеєри свідомо не
+     потрапляють сюди: у документі лишається тільки текст (turn.text є в
+     кожному ході незалежно від того, голосова відповідь чи текстова —
+     turn.voice лише вказує на файл запису). */
+
+  function wordCount(text) {
+    return ((text || "").match(/\S+/g) || []).length;
+  }
+
+  function downloadTextFile(filename, text) {
+    var blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  /* Агрегати по всьому дослідженню — рахуються з уже довантажених повних
+     сесій (data.turns/incidents/etc.), а не з короткого списку /api/sessions:
+     останній не несе ні тексту реплік, ні часу завершення для тривалості. */
+  function sessionStats(sessions) {
+    var total = sessions.length;
+    var completed = sessions.filter(function (s) { return s.completed; });
+    var topicsTotal = (state.guideData && state.guideData.topics || []).length;
+
+    var durations = [];
+    completed.forEach(function (s) {
+      if (!s.started_at || !s.finished_at) return;
+      var ms = new Date(s.finished_at) - new Date(s.started_at);
+      if (ms > 0) durations.push(ms / 60000);
+    });
+
+    var respondentWordCounts = [];
+    sessions.forEach(function (s) {
+      (s.turns || []).forEach(function (t) {
+        if (t.role === "respondent") respondentWordCounts.push(wordCount(t.text));
+      });
+    });
+
+    var coverageRatios = [];
+    if (topicsTotal) {
+      sessions.forEach(function (s) {
+        coverageRatios.push((s.topics_covered || []).length / topicsTotal);
+      });
+    }
+
+    var consented = sessions.filter(function (s) { return s.voice_consent; }).length;
+
+    var ratings = [];
+    sessions.forEach(function (s) {
+      if (s.feedback && s.feedback.rating) ratings.push(s.feedback.rating);
+    });
+
+    var avg = function (list) {
+      return list.length ? list.reduce(function (a, b) { return a + b; }, 0) / list.length : null;
+    };
+    var fmt1 = function (n) { return n === null ? "—" : n.toFixed(1); };
+    var fmtPct = function (n) { return n === null ? "—" : Math.round(n * 100) + "%"; };
+
+    return [
+      "- Респондентів: " + total + " (завершено: " + completed.length +
+        ", перервано: " + (total - completed.length) + ")",
+      "- Середня тривалість завершеного інтервʼю: " + fmt1(avg(durations)) + " хв",
+      "- Середня глибина відповіді: " + fmt1(avg(respondentWordCounts)) + " слів на репліку респондента",
+      "- Покриття тем: " + fmtPct(avg(coverageRatios)),
+      "- Згода на запис голосу: " + consented + " з " + total,
+      "- Середня оцінка досвіду: " + fmt1(avg(ratings)) + "/5 (з " + ratings.length + " оцінок)"
+    ].join("\n");
+  }
+
+  function sessionToMarkdown(session) {
+    var out = [];
+    var heading = session.respondent_name || session.session_id;
+    out.push("## " + heading + " — " + formatDateTime(session.started_at) +
+      (session.completed ? "" : ", перервано"));
+
+    if (session.feedback && (session.feedback.rating || session.feedback.comment)) {
+      var fb = "**Оцінка досвіду:**";
+      if (session.feedback.rating) fb += " " + session.feedback.rating + "/5";
+      if (session.feedback.comment) fb += " — \"" + session.feedback.comment + "\"";
+      out.push(fb);
+    }
+
+    if (session.incidents && session.incidents.length) {
+      out.push("**Інциденти:**");
+      session.incidents.forEach(function (incident) {
+        out.push("- " + describeIncident(incident).text);
+      });
+    }
+
+    out.push("");
+    (session.turns || []).forEach(function (turn) {
+      var who = turn.role === "interviewer" ? "ІНТЕРВ'ЮЕР" : "РЕСПОНДЕНТ";
+      out.push("**" + who + ":** " + (turn.text || ""));
+    });
+
+    return out.join("\n");
+  }
+
+  function exportAllRuns() {
+    var items = state.runs || [];
+    var btn = el("btn-export-runs");
+    if (!items.length) {
+      flash("Немає завершених інтервʼю для вивантаження", "bad");
+      return;
+    }
+    btn.disabled = true;
+    var originalText = btn.innerHTML;
+    btn.textContent = "Готую…";
+
+    Promise.all(items.map(function (item) {
+      return api("/api/admin/transcript?id=" + encodeURIComponent(item.session_id));
+    })).then(function (sessions) {
+      var title = (state.spaceData && state.spaceData.title) || state.space;
+      var doc = [
+        "# " + title,
+        "Експортовано: " + formatDateTime(new Date().toISOString()),
+        "",
+        "## Статистика",
+        sessionStats(sessions),
+        ""
+      ];
+      sessions.forEach(function (session) {
+        doc.push(sessionToMarkdown(session));
+        doc.push("");
+      });
+
+      var filename = (state.space || "дослідження") + "-" +
+        new Date().toISOString().slice(0, 10) + ".md";
+      downloadTextFile(filename, doc.join("\n"));
+      flash("Завантажено", "ok");
+    }).catch(function (err) {
+      flash("Не вдалося вивантажити: " + err.message, "bad");
+    }).finally(function () {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    });
   }
 
   /* ── новий простір ─────────────────────────────────────────────────── */
@@ -1159,6 +1351,82 @@
     });
   });
 
+  /* ── Імпорт списку питань з файлу ────────────────────────────────────
+     .txt/.md — одне питання в рядку (маркери й нумерацію зрізаємо);
+     .csv — перша колонка; .json — масив рядків або обʼєктів {text, expects}.
+     Нові картки лише додаються в редактор: нічого не зберігається, доки
+     дослідник не натисне «Зберегти гайд». */
+  function parseQuestionsFile(name, text) {
+    text = String(text || "").replace(/^\uFEFF/, "");
+    if (/\.json$/i.test(name)) {
+      var data = JSON.parse(text);
+      var list = Array.isArray(data) ? data : (data.topics || data.questions || []);
+      return list.map(function (item) {
+        if (typeof item === "string") return { text: item.trim(), must_learn: [] };
+        var q = item.ask_if_missed || item.text || item.question || "";
+        return { text: String(q).trim(), must_learn: item.must_learn || item.expects || [] };
+      }).filter(function (q) { return q.text; });
+    }
+    var csv = /\.csv$/i.test(name);
+    var rows = text.split(/\r?\n/).map(function (line) {
+      line = line.trim();
+      if (csv) {
+        var m = line.match(/^"((?:[^"]|"")*)"|^[^,;]*/);
+        line = m ? (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[0]).trim() : line;
+      }
+      return line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
+    }).filter(Boolean);
+    if (csv && rows.length && /^(питання|question|текст|text)$/i.test(rows[0])) rows.shift();
+    return rows.map(function (row) { return { text: row, must_learn: [] }; });
+  }
+
+  function importQuestionsFile(file) {
+    var errorNode = el("import-error");
+    errorNode.textContent = "";
+    if (!file) return;
+    if (file.size > 200 * 1024) { errorNode.textContent = "Файл завеликий: до 200 КБ."; return; }
+    var reader = new FileReader();
+    reader.onerror = function () { errorNode.textContent = "Не вдалося прочитати файл."; };
+    reader.onload = function () {
+      var questions;
+      try { questions = parseQuestionsFile(file.name, reader.result); }
+      catch (err) { errorNode.textContent = "Файл не схожий на список питань: " + err.message; return; }
+      if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
+      if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
+      var host = el("guide-topics-list");
+      questions.forEach(function (q) {
+        host.appendChild(buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn }));
+      });
+      refreshTopicOrderControls();
+      el("import-name").textContent = file.name;
+      el("import-count").textContent = "Додано " + questions.length + " " +
+        (function (n) { var m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? "питання" : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "питання" : "питань"); })(questions.length) + ". Натисніть «Зберегти гайд».";
+      el("import-result").classList.remove("hidden");
+    };
+    reader.readAsText(file, "utf-8");
+  }
+  (function () {
+    var drop = el("import-drop");
+    var input = el("import-file");
+    drop.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); input.click(); }
+    });
+    input.addEventListener("change", function () {
+      importQuestionsFile(input.files && input.files[0]);
+      input.value = "";
+    });
+    ["dragenter", "dragover"].forEach(function (type) {
+      drop.addEventListener(type, function (event) { event.preventDefault(); drop.classList.add("dragover"); });
+    });
+    ["dragleave", "drop"].forEach(function (type) {
+      drop.addEventListener(type, function (event) { event.preventDefault(); drop.classList.remove("dragover"); });
+    });
+    drop.addEventListener("drop", function (event) {
+      importQuestionsFile(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]);
+    });
+    el("import-dismiss").addEventListener("click", function () { el("import-result").classList.add("hidden"); });
+  })();
+
   el("btn-add-topic").addEventListener("click", function () {
     el("guide-topics-list").appendChild(buildTopicCard({}));
     refreshTopicOrderControls();
@@ -1179,6 +1447,7 @@
   });
   el("btn-transcript-close").addEventListener("click", closeTranscript);
   el("btn-transcript-x").addEventListener("click", closeTranscript);
+  el("btn-export-runs").addEventListener("click", exportAllRuns);
   el("transcript-modal").addEventListener("click", function (event) {
     if (event.target.id === "transcript-modal") closeTranscript();
   });
@@ -1189,7 +1458,7 @@
     if (!el("delete-modal").classList.contains("hidden")) closeDeleteConfirm();
     if (!el("purge-modal").classList.contains("hidden")) closePurgeConfirm();
   });
-  el("btn-save-guide").addEventListener("click", saveGuide);
+  el("btn-save-guide").addEventListener("click", function () { saveGuide().catch(function () { /* помилку вже показано */ }); });
   el("btn-save-space").addEventListener("click", saveSpace);
   // Статус — дропдаун із двома варіантами (шеврон, панель відкривається/
   // закривається так само, як звичайний .select), а не простий тогл по
@@ -1465,19 +1734,14 @@
 
   var selects = {
     mode: initSelect("space-mode"),
-    feedbackStyle: initSelect("guide-feedback-style")
+    feedbackStyle: initSelect("guide-feedback-style"),
+    questionSize: initSelect("guide-question-size"),
+    questionWeight: initSelect("guide-question-weight")
   };
 
   /* Семпл кольору просто в полі — видно, який відтінок стоїть, без
      здогадок по hex. */
-  (function () {
-    var input = el("space-accent");
-    var swatch = el("accent-swatch");
-    function paint() { swatch.style.background = input.value.trim() || "transparent"; }
-    input.addEventListener("input", paint);
-    input.addEventListener("change", paint);
-    accentSwatchPaint = paint;
-  })();
+  
 
   function refresh() {
     return api("/api/admin/spaces").then(function (data) {
@@ -1486,8 +1750,63 @@
     });
   }
 
+  /* ── DESIGN-CANVAS: стани за URL ─────────────────────────────────────
+     `?canvas=<стан>` натискає ТІ САМІ кнопки, що й дослідник. Працює лише на localhost.
+     Стани: questions, runs-list, transcript, new-space, status-menu, trash-empty.
+     DELETE WITH: the design-canvas/ folder (canvas-app/), разом із цим блоком. */
+  function applyCanvasPin(pin) {
+    var host = window.location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") return Promise.resolve();
+    function click(selector) { var node = document.querySelector(selector); if (node) node.click(); }
+    function wait(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+    function post(url, body) {
+      return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}) }).then(function (r) { return r.json(); });
+    }
+    function ensureFinishedRun() {
+      return fetch("/api/sessions").then(function (r) { return r.json(); }).then(function (list) {
+        var items = list.items || list.sessions || list || [];
+        if (items.length) return null;
+        return post("/api/start", { record_voice: false, respondent_name: "Олена Коваленко" }).then(function (started) {
+          var text = "Це була дуже цікава ситуація, я добре її памʼятаю і можу розповісти детальніше.";
+          // Повне інтервʼю: відповідь на кожне питання, щоб транскрипт мав усю послідовність питань.
+          function next(count) {
+            return post("/api/answer", { session_id: started.session_id, text: text }).then(function (ans) {
+              if (count >= 12 || !ans.progress || ans.progress.at_end) return null;
+              return post("/api/step", { session_id: started.session_id, delta: 1 }).then(function () { return next(count + 1); });
+            });
+          }
+          return next(0).then(function () { return post("/api/finish", { session_id: started.session_id }); });
+        });
+      });
+    }
+    if (pin === "questions") { click('.tab[data-tab="questions"]'); return Promise.resolve(); }
+    if (pin === "status-menu") { click("#page-status"); return Promise.resolve(); }
+    if (pin === "new-space") { click("#btn-new-space"); return Promise.resolve(); }
+    if (pin === "trash-empty") { click("#btn-toggle-trash"); return Promise.resolve(); }
+    if (pin === "runs-list" || pin === "transcript") {
+      return ensureFinishedRun().then(function () {
+        click('.tab[data-tab="runs"]');
+        return wait(600);
+      }).then(function () {
+        if (pin === "transcript") { var open = document.querySelector("#runs-list .run button"); if (open) open.click(); }
+      });
+    }
+    return Promise.resolve();
+  }
+
+  // Адреса окремого сайту респондента (якщо панель і форма — різні сайти).
+  fetch("/api/admin/site").then(function (r) { return r.json(); }).then(function (d) {
+    state.respondentUrl = (d && d.respondent_url) || "";
+  }).catch(function () { /* лишається поточний origin */ });
+
   refresh().then(function () {
     if (state.spaces.length) selectSpace(state.spaces[0].key);
+    var pin = new URLSearchParams(window.location.search).get("canvas");
+    if (pin) return applyCanvasPin(pin).then(function () {
+      /* Сигнал для capture.mjs: стан застосовано (контракт design-canvas). */
+      document.documentElement.setAttribute("data-canvas-pinned", pin);
+    });
   }).catch(function (err) {
     el("space-list").innerHTML = "<li class='muted'>" + err.message + "</li>";
   });

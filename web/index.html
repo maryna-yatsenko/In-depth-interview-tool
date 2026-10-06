@@ -76,15 +76,18 @@
         <ol id="progress-sections" class="sections"></ol>
         <!-- Навігація — тут, а не над мікрофоном: вона про «де я в розмові»,
              а не про поточну відповідь. -->
+        <!-- Стрілки без підписів (outline): «Попереднє» й «Наступне» — це рух
+             по розмові, його читають за напрямком. «Раніше сказане» стоїть
+             праворуч від «Попереднє»: обидві кнопки про те, що вже було. -->
         <div id="voice-confirm" class="voice-confirm">
-          <button id="btn-prev" class="ghost" disabled>← Попереднє</button>
-          <button id="btn-next" class="ghost" disabled>Наступне питання →</button>
+          <div class="voice-confirm-start">
+            <button id="btn-prev" class="outline icon-btn" aria-label="Попереднє питання" title="Попереднє питання" disabled><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></button>
+            <button id="btn-history" class="outline small">Раніше сказане</button>
+          </div>
+          <button id="btn-next" class="outline icon-btn" aria-label="Наступне питання" title="Наступне питання" disabled></button>
         </div>
         <div class="progress-row">
           <p id="progress-detail" class="progress-detail"></p>
-          <!-- Повернутись до сказаного раніше — про розмову взагалі, тому тут,
-               а не в ряду дій над поточною відповіддю. -->
-          <button id="btn-history" class="ghost small">Раніше сказане</button>
         </div>
       </div>
 
@@ -120,12 +123,6 @@
                могло «поїхати» за екран, поки записаний текст лишався на
                місці. Тепер обидва завжди на очах одночасно. Галочка
                зʼявляється, коли пункт зараховано. -->
-          <div id="checklist" class="checklist hidden">
-            <span class="checklist-title"><span id="checklist-title-text">Хочемо
-              почути:</span><span id="checklist-mark"
-              class="checklist-checking hidden" aria-hidden="true"></span></span>
-            <ul id="checklist-items"></ul>
-          </div>
           <p id="heard" class="heard" aria-live="polite"></p>
           <!-- Смуга відтворення власного запису: скільки вже прозвучало.
                Показується лише під час прослуховування. -->
@@ -151,6 +148,17 @@
             </div>
           </div>
         </div>
+        <!-- «Про що варто сказати» — памʼятка окремо під блоком відповіді, просто на тлі сторінки,
+             не в картці: спершу те, що людина каже, потім підказка. Її можна згорнути. -->
+          <div id="checklist" class="checklist hidden">
+            <button type="button" id="checklist-toggle" class="checklist-toggle" aria-expanded="true" aria-controls="checklist-items">
+              <span class="checklist-title"><span id="checklist-title-text">Хочемо
+                почути:</span><span id="checklist-mark"
+                class="checklist-checking hidden" aria-hidden="true"></span></span>
+              <svg class="icon chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <ul id="checklist-items"></ul>
+          </div>
 
         <!-- Говорити — ліворуч, окремо від пари дій над відповіддю: це інша
              дія (новий запис, а не рішення про вже сказане), тому й по інший
@@ -214,6 +222,7 @@
          Людина бачить, наскільки розгорнуто відповіла, і може ще щось
          дописати чи почати наново, перш ніж дані підуть досліднику. -->
     <section id="screen-summary" class="screen hidden">
+      <div class="summary-core">
       <h1>Дякую, це всі питання</h1>
       <p id="summary-depth" class="consent"></p>
       <!-- Наскільки розгорнуто відповідали — кольором і обличчям, а не лише
@@ -228,18 +237,88 @@
           <span id="summary-quality-hint" class="summary-quality-hint"></span>
         </span>
       </div>
-      <div class="actions summary-actions">
+      <div class="summary-main">
         <button id="btn-summary-send" class="primary">Надіслати мої відповіді</button>
         <button id="btn-summary-add" class="ghost">Додати ще щось</button>
-        <button id="btn-summary-restart" class="ghost">Почати інтервʼю спочатку</button>
+      </div>
+      </div><!-- /summary-core -->
+      <!-- «Спочатку» — окремо внизу, за розділювачем: інша дія з іншим наслідком. -->
+      <div class="summary-bottom">
+        <hr class="summary-divider">
+        <button id="btn-summary-restart" class="outline">Почати інтервʼю спочатку</button>
       </div>
     </section>
 
     <!-- 4. Завершення -->
     <section id="screen-done" class="screen hidden">
-      <h1>Дякую</h1>
-      <p id="done-text" class="consent"></p>
-
+      <!-- Радісне завершення: барабан із паличками й конфеті. Суто декоративне
+           (aria-hidden), без впливу на відгук нижче; не рухається, якщо людина
+           просила менше анімації. -->
+      <div class="success-hero">
+        <!-- Конфеті — ПОЗАДУ рук: воно вилітає з-за них на всі боки. -->
+        <span class="confetti" aria-hidden="true" style="--dx:447px;--up:61px;--fy:12px;--t:4.60s;--f:0.79s;--n:6;--dl:0.50s;--rot:-82deg;--c:var(--sparkle);--w:17px;--h:17px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:448px;--up:62px;--fy:26px;--t:4.87s;--f:0.56s;--n:9;--dl:0.54s;--rot:40deg;--c:var(--accent-strong);--w:6px;--h:10px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-420px;--up:123px;--fy:25px;--t:4.78s;--f:0.72s;--n:7;--dl:0.57s;--rot:158deg;--c:var(--warn);--w:3px;--h:21px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:426px;--up:66px;--fy:-7px;--t:3.65s;--f:0.85s;--n:5;--dl:0.61s;--rot:118deg;--c:var(--accent-strong);--w:5px;--h:5px"><i><b class="dot"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:452px;--up:75px;--fy:5px;--t:5.11s;--f:0.96s;--n:6;--dl:0.53s;--rot:52deg;--c:var(--accent-strong);--w:4px;--h:16px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-429px;--up:113px;--fy:-32px;--t:5.04s;--f:0.96s;--n:6;--dl:0.56s;--rot:16deg;--c:var(--accent-strong);--w:8px;--h:8px"><i><b class="dot"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:399px;--up:66px;--fy:-23px;--t:4.35s;--f:0.65s;--n:7;--dl:0.60s;--rot:-151deg;--c:var(--accent-strong);--w:6px;--h:11px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:408px;--up:58px;--fy:0px;--t:4.47s;--f:0.89s;--n:6;--dl:0.52s;--rot:-29deg;--c:var(--sparkle);--w:11px;--h:11px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-428px;--up:94px;--fy:-25px;--t:3.62s;--f:0.62s;--n:6;--dl:0.56s;--rot:-5deg;--c:var(--gold);--w:7px;--h:13px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-428px;--up:113px;--fy:24px;--t:4.05s;--f:0.68s;--n:6;--dl:0.59s;--rot:105deg;--c:var(--sparkle);--w:14px;--h:14px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:93px;--up:78px;--fy:-29px;--t:4.83s;--f:0.66s;--n:8;--dl:0.51s;--rot:-140deg;--c:var(--pink);--w:10px;--h:14px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:273px;--up:122px;--fy:-30px;--t:4.88s;--f:0.67s;--n:8;--dl:0.55s;--rot:-168deg;--c:var(--gold);--w:9px;--h:10px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:110px;--up:107px;--fy:-31px;--t:4.59s;--f:0.67s;--n:7;--dl:0.58s;--rot:96deg;--c:var(--good);--w:10px;--h:13px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:348px;--up:71px;--fy:21px;--t:3.60s;--f:0.72s;--n:6;--dl:1.30s;--rot:53deg;--c:var(--good);--w:8px;--h:14px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:214px;--up:74px;--fy:-25px;--t:3.94s;--f:0.57s;--n:7;--dl:1.34s;--rot:161deg;--c:var(--good);--w:4px;--h:22px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-82px;--up:118px;--fy:21px;--t:5.17s;--f:0.72s;--n:8;--dl:1.38s;--rot:-119deg;--c:var(--accent);--w:9px;--h:9px"><i><b class="dot"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-327px;--up:110px;--fy:27px;--t:4.06s;--f:0.80s;--n:6;--dl:1.41s;--rot:28deg;--c:var(--good);--w:8px;--h:10px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:86px;--up:110px;--fy:7px;--t:4.46s;--f:0.82s;--n:6;--dl:1.33s;--rot:-140deg;--c:var(--gold);--w:3px;--h:15px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-339px;--up:98px;--fy:26px;--t:3.93s;--f:0.76s;--n:6;--dl:1.37s;--rot:111deg;--c:var(--pink);--w:6px;--h:13px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-332px;--up:80px;--fy:28px;--t:4.71s;--f:0.99s;--n:5;--dl:1.40s;--rot:137deg;--c:var(--accent);--w:10px;--h:13px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:22px;--up:70px;--fy:-19px;--t:5.03s;--f:0.76s;--n:7;--dl:1.32s;--rot:146deg;--c:var(--accent);--w:7px;--h:7px"><i><b class="dot"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-134px;--up:120px;--fy:-28px;--t:4.18s;--f:0.64s;--n:7;--dl:1.36s;--rot:-98deg;--c:var(--sparkle);--w:15px;--h:15px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-310px;--up:77px;--fy:-35px;--t:3.83s;--f:0.82s;--n:5;--dl:1.39s;--rot:-55deg;--c:var(--accent);--w:3px;--h:18px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-72px;--up:81px;--fy:2px;--t:4.08s;--f:0.95s;--n:5;--dl:1.31s;--rot:131deg;--c:var(--sparkle);--w:17px;--h:17px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:114px;--up:85px;--fy:7px;--t:3.61s;--f:0.73s;--n:5;--dl:1.35s;--rot:-151deg;--c:var(--sparkle);--w:16px;--h:16px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:334px;--up:107px;--fy:-18px;--t:4.14s;--f:0.67s;--n:7;--dl:1.39s;--rot:128deg;--c:var(--pink);--w:10px;--h:15px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:177px;--up:120px;--fy:-6px;--t:4.91s;--f:0.99s;--n:5;--dl:2.10s;--rot:-120deg;--c:var(--gold);--w:3px;--h:22px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-108px;--up:123px;--fy:-6px;--t:4.11s;--f:0.77s;--n:6;--dl:2.14s;--rot:97deg;--c:var(--accent-strong);--w:8px;--h:14px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:118px;--up:110px;--fy:-36px;--t:4.73s;--f:0.90s;--n:6;--dl:2.18s;--rot:-123deg;--c:var(--pink);--w:8px;--h:9px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-296px;--up:111px;--fy:-38px;--t:5.16s;--f:0.83s;--n:7;--dl:2.21s;--rot:-41deg;--c:var(--gold);--w:6px;--h:10px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:124px;--up:101px;--fy:19px;--t:4.80s;--f:0.77s;--n:7;--dl:2.13s;--rot:-108deg;--c:var(--pink);--w:5px;--h:5px"><i><b class="dot"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:183px;--up:95px;--fy:15px;--t:3.63s;--f:0.84s;--n:5;--dl:2.17s;--rot:-173deg;--c:var(--sparkle);--w:16px;--h:16px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-3px;--up:87px;--fy:0px;--t:4.19s;--f:0.57s;--n:8;--dl:2.20s;--rot:-23deg;--c:var(--warn);--w:7px;--h:10px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:120px;--up:63px;--fy:-37px;--t:3.61s;--f:0.64s;--n:6;--dl:2.12s;--rot:166deg;--c:var(--sparkle);--w:11px;--h:11px"><i><b class="spark"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:70px;--up:113px;--fy:27px;--t:3.89s;--f:0.96s;--n:5;--dl:2.16s;--rot:80deg;--c:var(--warn);--w:8px;--h:9px"><i><b class="rect"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-86px;--up:78px;--fy:13px;--t:3.91s;--f:0.62s;--n:7;--dl:2.20s;--rot:37deg;--c:var(--warn);--w:6px;--h:6px"><i><b class="dot"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:207px;--up:78px;--fy:26px;--t:5.09s;--f:0.59s;--n:9;--dl:2.11s;--rot:-102deg;--c:var(--accent-strong);--w:4px;--h:14px"><i><b class="ribbon"></b></i></span>
+        <span class="confetti" aria-hidden="true" style="--dx:-315px;--up:120px;--fy:-15px;--t:4.15s;--f:0.76s;--n:6;--dl:2.15s;--rot:-8deg;--c:var(--accent);--w:3px;--h:20px"><i><b class="ribbon"></b></i></span>
+        <svg class="clap" viewBox="0 0 240 200" focusable="false" aria-hidden="true">
+          <defs>
+            <linearGradient id="pp-body" x1="0" x2="1"><stop offset="0" style="stop-color:color-mix(in srgb, var(--accent-strong) 70%, #000)"/><stop offset=".45" style="stop-color:var(--accent-strong)"/><stop offset="1" style="stop-color:color-mix(in srgb, var(--accent-strong) 60%, #000)"/></linearGradient>
+            <clipPath id="pp-clip"><path d="M82 90L118 184Q120 188 122 184L158 90Z"/></clipPath>
+          </defs>
+          <g class="pp-flash"><circle cx="120" cy="86" r="30"/></g>
+          <g class="pp-cone">
+            <ellipse class="pp-shadow" cx="120" cy="190" rx="26" ry="5"/>
+            <path d="M82 90L118 184Q120 188 122 184L158 90Z" fill="url(#pp-body)"/>
+            <g clip-path="url(#pp-clip)">
+              <path class="pp-band" d="M70 112L170 102V116L70 126Z"/>
+              <path class="pp-band2" d="M70 140L170 128V138L70 152Z"/>
+              <circle class="pp-dot" cx="108" cy="124" r="3"/><circle class="pp-dot" cx="132" cy="121" r="3"/><circle class="pp-dot" cx="120" cy="146" r="3"/>
+            </g>
+            <ellipse class="pp-mouth" cx="120" cy="90" rx="38" ry="9.5"/>
+            <ellipse class="pp-inside" cx="120" cy="90" rx="31" ry="6.5"/>
+          </g>
+        </svg>
+        <!-- Спочатку хлопавка вистрілює на прозорому тлі, потім вони зникають, і на його місці
+             з'являється наш текст подяки. -->
+        <div class="success-copy">
+          <h1>Дякуємо!</h1>
+          <p id="done-text" class="consent"></p>
+        </div>
+      </div>
       <!-- Відгук про сам досвід проходження — окремо від дослідження, тому
            тут, після завершення, а не десь усередині інтервʼю. Необовʼязково:
            респондент уже все зробив, це не має виглядати ще одним питанням,
@@ -267,11 +346,14 @@
           placeholder="Що сподобалось або що варто виправити? (необовʼязково)"></textarea>
         <div class="actions">
           <button id="btn-feedback-send" class="primary" disabled>Надіслати відгук</button>
-          <button id="btn-feedback-skip" class="ghost small">Пропустити</button>
+          <button id="btn-feedback-skip" class="outline">Пропустити</button>
         </div>
         <p id="feedback-status" class="status" aria-live="polite"></p>
       </div>
-      <p id="feedback-thanks" class="feedback-thanks hidden" aria-live="polite">Дякуємо за відгук!</p>
+      <div id="feedback-thanks" class="feedback-thanks hidden" aria-live="polite">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
+        <span>Ваш відгук було відправлено успішно</span>
+      </div>
     </section>
 
   </main>

@@ -48,7 +48,10 @@ admin_root = _SPACES_ROOT
 # Vercel шукає в файлі САМЕ `class handler(...):` статично (без виконання
 # коду) — присвоєння `handler = make_handler(...)` цьому не відповідає, хоч
 # і працює однаково в Python. Тому клас, що успадковує результат фабрики.
-_Handler = make_handler(space, guide, llm_cfg, store, admin_root, bank_provider)
+# SURFACE=respondent|admin ділить деплой на два окремі сайти (два проєкти Vercel з одного коду);
+# без змінної — як раніше, один сайт з обома частинами.
+_SURFACE = os.environ.get("SURFACE", "all")
+_Handler = make_handler(space, guide, llm_cfg, store, admin_root, bank_provider, _SURFACE)
 
 
 class handler(_Handler):

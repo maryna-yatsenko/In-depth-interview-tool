@@ -67,7 +67,7 @@
               <h1 id="page-title">Панель дослідника</h1>
               <button type="button" id="btn-copy-link" class="copy-link-btn" aria-label="Скопіювати посилання на форму для респондента">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                <span class="tooltip" role="tooltip">Скопіювати</span>
+                <span class="tooltip" role="tooltip">Скопіювати посилання на форму</span>
               </button>
             </div>
             <div class="page-head-side">
@@ -134,25 +134,54 @@
           </div>
         </article>
 
-        <article class="card">
+<article class="card">
           <div class="card-head">
-            <h2>Вигляд для респондента</h2>
+            <h2>Вигляд питань</h2>
+            <p>Як респондент відповідає і як бачить текст питання на екрані інтервʼю й у «Раніше сказане».</p>
           </div>
           <div class="card-body">
-            <div class="row">
-              <label>Режим інтерфейсу
-                <select id="space-mode">
-                  <option value="voice">лише голос (без поля введення)</option>
-                  <option value="text">текст (з мікрофоном як опцією)</option>
-                </select>
-              </label>
-              <label>Акцентний колір
-                <span class="input-with-swatch">
-                  <span id="accent-swatch" class="swatch" aria-hidden="true"></span>
-                  <input id="space-accent" type="text" placeholder="#2f6f4f">
-                </span>
-              </label>
-            </div>
+            <label>Режим інтерфейсу
+              <select id="space-mode">
+                <option value="voice">лише голос (без поля введення)</option>
+                <option value="text">текст (з мікрофоном як опцією)</option>
+              </select>
+            </label>
+            <label>Розмір шрифту
+              <select id="guide-question-size">
+                <option value="small">Менший</option>
+                <option value="medium">Звичайний</option>
+                <option value="large">Більший</option>
+              </select>
+            </label>
+            <label>Накреслення
+              <select id="guide-question-weight">
+                <option value="regular">Звичайне</option>
+                <option value="medium">Середнє</option>
+                <option value="bold">Жирне</option>
+              </select>
+            </label>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <h2>Оцінка досвіду</h2>
+            <p>Екран подяки просить респондента оцінити сам процес проходження —
+               окремо від дослідження.</p>
+          </div>
+          <div class="card-body">
+            <label class="block">Текст запитання
+              <textarea id="guide-feedback-prompt" rows="2"
+                placeholder="Як вам було проходити це інтервʼю?"></textarea>
+            </label>
+            <label>Вигляд оцінки
+              <select id="guide-feedback-style">
+                <option value="stars">Зірочки</option>
+                <option value="emoji">Смайлики</option>
+                <option value="hearts">Серця</option>
+                <option value="numbers">Цифри від 1 до 5</option>
+              </select>
+            </label>
           </div>
         </article>
 
@@ -189,6 +218,28 @@
         <!-- Перше й останнє питання — не картки зі списку: їх не можна
              переставити чи прибрати, тому вони й виглядають інакше, а не
              просто стоять першими та останніми в тому самому списку. -->
+                <!-- Імпорт списку питань: компактна зона для файлу. Питання потрапляють у
+             редактор як нові картки; у гайді вони з'являються після «Зберегти гайд». -->
+        <div class="import-box">
+          <label id="import-drop" class="import-drop" tabindex="0">
+            <input type="file" id="import-file" accept=".txt,.md,.csv,.json" hidden>
+            <span class="import-icon"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg></span>
+            <span class="import-text">
+              <strong>Завантажити список питань</strong>
+              <span>Перетягніть файл сюди або оберіть. Підходять .txt, .csv, .json: одне питання в рядку</span>
+            </span>
+          </label>
+          <div id="import-result" class="import-result hidden">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+            <span id="import-name" class="import-name"></span>
+            <span id="import-count" class="import-count"></span>
+            <button type="button" id="import-dismiss" class="icon-btn import-dismiss" aria-label="Закрити" title="Закрити">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <p id="import-error" class="import-error"></p>
+        </div>
+
         <div class="pinned-question">
           <label class="block">Вітання
             <textarea id="guide-opening" rows="2"
@@ -196,8 +247,8 @@
           </label>
         </div>
 
-        <div id="guide-topics-list"></div>
-        <button type="button" id="btn-add-topic" class="add-topic">+ Додати питання</button>
+<div id="guide-topics-list"></div>
+        <button type="button" id="btn-add-topic" class="add-topic"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>Додати питання</span></button>
 
         <div class="pinned-question">
           <label class="block">Прощання
@@ -205,26 +256,6 @@
               placeholder="Подяка без резюме: резюме — це вже інтерпретація."></textarea>
           </label>
         </div>
-
-        <article class="card">
-          <div class="card-head">
-            <h2>Оцінка досвіду</h2>
-            <p>Екран подяки просить респондента оцінити сам процес проходження —
-               окремо від дослідження.</p>
-          </div>
-          <div class="card-body">
-            <label class="block">Текст запитання
-              <textarea id="guide-feedback-prompt" rows="2"
-                placeholder="Як вам було проходити це інтервʼю?"></textarea>
-            </label>
-            <label>Вигляд оцінки
-              <select id="guide-feedback-style">
-                <option value="stars">Зірочки</option>
-                <option value="emoji">Смайлики</option>
-              </select>
-            </label>
-          </div>
-        </article>
 
         <div class="actions sticky">
           <button id="btn-save-guide" class="primary">Зберегти гайд</button>
@@ -241,6 +272,10 @@
           </div>
           <div id="runs-list" class="list-rows"></div>
         </article>
+        <!-- Дії сторінки — у нижній панелі, що липне до краю, як на інших вкладках. -->
+        <div class="actions sticky">
+          <button type="button" id="btn-export-runs" class="primary"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Завантажити всі дані</button>
+        </div>
       </section>
       </div>
     </main>

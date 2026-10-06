@@ -39,8 +39,11 @@
      помилка, а заохочення розказати ще). */
   --warn: #c3410e;          /* темніше за orange.9 (4.9:1; сам orange.9 — 4.08:1) */
   --good: #277c38;          /* темніше за green.9 (5.0:1; сам green.9 — 4.14:1) */
+  /* Для дрібного тексту повідомлень: контраст ≥ 7:1 на білому. */
+  --warn-strong: #8a2c06;
+  --good-strong: #1a5a2a;
   --radius: 8px;            /* контроли: кнопки, поля — той самий --radius-sm, що в адмінці */
-  --radius-lg: 16px;        /* картки-контейнери — той самий --radius, що в адмінці */
+  --radius-lg: 10px;        /* картки-контейнери: менше закруглення, ніж у адмінці (16px) — за коментарем рев'ю */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .05), 0 10px 15px -5px rgba(0, 0, 0, .05), 0 7px 7px -5px rgba(0, 0, 0, .04);
 }
 
@@ -63,6 +66,8 @@
     --check: #38d9a9;         /* Mantine teal.4 — 7.5:1 */
     --warn: #ffa94d;          /* Mantine orange.4 — 7.1:1 */
     --good: #69db7c;          /* Mantine green.4 — 7.8:1 */
+    --warn-strong: #ffc078;
+    --good-strong: #8ce99a;
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, .3), 0 10px 15px -5px rgba(0, 0, 0, .3), 0 7px 7px -5px rgba(0, 0, 0, .2);
   }
 }
@@ -88,6 +93,8 @@
   --check: #38d9a9;
   --warn: #ffa94d;
   --good: #69db7c;
+  --warn-strong: #ffc078;
+  --good-strong: #8ce99a;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .3), 0 10px 15px -5px rgba(0, 0, 0, .3), 0 7px 7px -5px rgba(0, 0, 0, .2);
 }
 :root[data-theme="light"] {
@@ -106,6 +113,8 @@
   --check: #087f5b;
   --warn: #c3410e;
   --good: #277c38;
+  --warn-strong: #8a2c06;
+  --good-strong: #1a5a2a;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .05), 0 10px 15px -5px rgba(0, 0, 0, .05), 0 7px 7px -5px rgba(0, 0, 0, .04);
 }
 
@@ -142,8 +151,17 @@ body {
    ті самі розміри 58×32, пігулка 26×26, ті самі тіні), лише прибитий
    position: fixed до кута екрана — тут немає бічної панелі, куди його
    вбудувати, як там. z-index вище за .screen (animation з transform міг
-   би інакше створити новий stacking context над фіксованим елементом). */
-.theme-switch {
+   би інакше створити новий stacking context над фіксованим елементом).
+
+   Скоуп body:not(.admin): admin.html підключає і styles.css, і admin.css
+   — без цього scope ця версія тихо просочувалась у бічну панель поверх
+   admin.css. Специфічність в обох однакова (один клас), тож на спільних
+   властивостях (background, border-radius, тіні — вони буквально
+   однакові) перемагав пізніший admin.css, а от top/left/z-index, яких
+   admin.css узагалі не задає (там працює звичайний flex, не fixed), не з
+   чим було перебити — і перемикач теми в адмінці зʼїжджав на +16px
+   вправо й вниз від свого місця в рядку. */
+body:not(.admin) .theme-switch {
   position: fixed; top: 16px; left: 16px; z-index: 20;
   display: flex; gap: 0;
   width: 58px; height: 32px; padding: 2px;
@@ -152,7 +170,7 @@ body {
   border: 1px solid var(--line);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 16px -8px rgba(20, 20, 20, .16);
 }
-.theme-switch::before {
+body:not(.admin) .theme-switch::before {
   content: "";
   position: absolute; top: 2px; left: 2px;
   width: 26px; height: 26px;
@@ -163,24 +181,24 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 10px -4px rgba(20, 20, 20, .45);
   transition: transform .2s ease;
 }
-.theme-switch[data-active="dark"]::before { transform: translateX(100%); }
-.theme-btn {
+body:not(.admin) .theme-switch[data-active="dark"]::before { transform: translateX(100%); }
+body:not(.admin) .theme-btn {
   position: relative; z-index: 1;
   width: 26px; height: 26px; padding: 0;
   display: flex; align-items: center; justify-content: center; border-radius: 6px;
   background: transparent; border: none; color: var(--muted);
 }
-.theme-btn svg { width: 14px; height: 14px; opacity: .75; transition: color .15s ease, opacity .15s ease; }
-.theme-btn:hover:not(.active) { color: var(--text); }
-.theme-btn:hover:not(.active) svg { opacity: .95; }
-.theme-btn.active { color: #fff; }
-.theme-btn.active svg { opacity: 1; }
+body:not(.admin) .theme-btn svg { width: 14px; height: 14px; opacity: .75; transition: color .15s ease, opacity .15s ease; }
+body:not(.admin) .theme-btn:hover:not(.active) { color: var(--text); }
+body:not(.admin) .theme-btn:hover:not(.active) svg { opacity: .95; }
+body:not(.admin) .theme-btn.active { color: #fff; }
+body:not(.admin) .theme-btn.active svg { opacity: 1; }
 @media (prefers-color-scheme: dark) {
-  .theme-switch {
+  body:not(.admin) .theme-switch {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 4px 8px -6px rgba(0, 0, 0, .35);
   }
 }
-:root[data-theme="dark"] .theme-switch {
+:root[data-theme="dark"] body:not(.admin) .theme-switch {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 4px 8px -6px rgba(0, 0, 0, .35);
 }
 /* !important свідомо: утилітарний клас видимості мусить перемагати
@@ -219,12 +237,30 @@ h1 { font-size: 34px; font-weight: 700; line-height: 1.15; letter-spacing: -.01e
 .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .resume {
+  position: relative;
   background: var(--surface);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   padding: 18px 20px;
   margin-bottom: 24px;
+}
+/* «Промінь» по рамці: короткий світлий штрих обходить блок по колу. Це
+   конічний градієнт, видимий лише в рамці (маска), — без зайвих елементів.
+   Без руху, якщо людина просила менше анімації: тоді рамка просто акцентна. */
+@property --beam-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.resume::after {
+  content: ""; position: absolute; inset: -1px; padding: 1px;
+  border-radius: inherit; pointer-events: none;
+  background: conic-gradient(from var(--beam-angle), transparent 0 84%, var(--accent-strong) 95%, var(--accent) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: resume-beam 4s linear infinite;
+}
+@keyframes resume-beam { to { --beam-angle: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .resume { border-color: var(--accent); }
+  .resume::after { animation: none; background: none; }
 }
 .resume p { margin: 0 0 14px; }
 .resume #resume-detail { color: var(--muted); }
@@ -281,7 +317,7 @@ button:disabled { opacity: .45; cursor: default; }
 /* button.small (не .small) — той самий рецепт специфічності, що в адмінці:
    інакше .ghost нижче (той самий рівень специфічності .small) перебивав би
    тут font-size: 15px, і .ghost.small лишався б 15px замість 14px. */
-button.small { padding: 8px 16px; font-size: 14px; height: auto; border-radius: 6px; gap: 8px; }
+button.small { padding: 8px 16px; font-size: 14px; height: auto; border-radius: var(--radius); gap: 8px; }
 /* Кільце фокуса у Mantine — 2px акцентом з відступом, а не браузерний
    дефолт: те саме вже стояло на textarea, тепер послідовно й на кнопках. */
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -307,15 +343,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     0 24px 32px -16px rgba(20, 20, 20, .3);
 }
 .primary:hover:not(:disabled) {
-  filter: none; transform: translateY(-2px);
+  filter: none;
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--accent-strong) 40%, var(--btn-fill)) 0%,
     var(--btn-fill) 70%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .4),
-    0 1px 1px rgba(20, 20, 20, .18),
-    0 16px 24px -8px rgba(20, 20, 20, .4),
-    0 32px 40px -16px rgba(20, 20, 20, .35);
 }
 .primary:active:not(:disabled) {
   transform: translateY(0);
@@ -341,10 +372,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .ghost:hover:not(:disabled) {
   color: var(--text); border-color: color-mix(in srgb, var(--text) 22%, var(--line));
-  transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
 }
 .ghost:active:not(:disabled) { transform: translateY(0); }
+/* Outline: лише рамка, без заливки й тіні — тихіша за .ghost. Для кнопок, що
+   мають стояти осторонь головних дій (стрілки, «Почати спочатку»). */
+.outline {
+  background: transparent; color: var(--text);
+  border-color: color-mix(in srgb, var(--text) 24%, var(--line));
+  font-size: 15px; font-weight: 500; box-shadow: none;
+}
+.outline:hover:not(:disabled) { border-color: var(--text); background: color-mix(in srgb, #fff 75%, var(--bg)); }
+:root[data-theme="dark"] .outline:hover:not(:disabled) { background: color-mix(in srgb, #fff 9%, var(--bg)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .outline:hover:not(:disabled) { background: color-mix(in srgb, #fff 9%, var(--bg)); } }
 /* Без підйому й підсиленої тіні на ховері — на відміну від решти .ghost:
    ці кнопки (24px, вище) стоять впритул до тонкого рядка тексту, і
    рух/глибша тінь там читались як зайве сіпання, а не як звична реакція
@@ -354,7 +393,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #btn-play-own:hover:not(:disabled),
 .history-a .history-play:hover:not(:disabled) {
   transform: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 1px 1px rgba(20, 20, 20, .03), 0 4px 8px -6px rgba(20, 20, 20, .12);
 }
 
 /* Темна тема: той самий рецепт, що й в адмінці — світлик і зовнішня тінь
@@ -368,17 +406,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 16px -8px rgba(0, 0, 0, .6), 0 24px 32px -16px rgba(0, 0, 0, .55);
   }
   .primary:hover:not(:disabled), .talk:hover:not(:disabled) {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 16px 24px -8px rgba(0, 0, 0, .7), 0 32px 40px -16px rgba(0, 0, 0, .6);
   }
   .ghost, .mic {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 4px 8px -6px rgba(0, 0, 0, .35);
   }
   .ghost:hover:not(:disabled), .mic:hover:not(:disabled) {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 8px 12px -6px rgba(0, 0, 0, .45);
   }
   #btn-play-own:hover:not(:disabled),
   .history-a .history-play:hover:not(:disabled) {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 4px 8px -6px rgba(0, 0, 0, .35);
   }
 }
 
@@ -405,8 +440,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .mic:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--text) 22%, var(--line));
-  transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6), 0 1px 1px rgba(20, 20, 20, .04), 0 8px 12px -6px rgba(20, 20, 20, .16);
 }
 .mic:active:not(:disabled) { transform: translateY(0); }
 .mic .dot {
@@ -439,10 +472,19 @@ blockquote#utterance {
 }
 .utterance-text {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--q-size, 20px);
+  font-weight: var(--q-weight, 400);
   line-height: 1.5;
   white-space: pre-wrap;
 }
+/* Вигляд питань задає дослідник (адмінка → «Вигляд питань»): app.js ставить
+   data-q-size / data-q-weight на <html>. */
+:root[data-q-size="small"] { --q-size: 17px; --q-size-sm: 14px; }
+:root[data-q-size="medium"] { --q-size: 20px; --q-size-sm: 16px; }
+:root[data-q-size="large"] { --q-size: 24px; --q-size-sm: 19px; }
+:root[data-q-weight="regular"] { --q-weight: 400; }
+:root[data-q-weight="medium"] { --q-weight: 500; }
+:root[data-q-weight="bold"] { --q-weight: 700; }
 #audio-bar.reading-bar { margin: 14px 0 0; }
 
 textarea {
@@ -649,6 +691,7 @@ textarea:focus {
 .heard:empty::before {
   content: attr(data-placeholder);
   color: var(--muted);
+  font-size: 14px;
 }
 .heard .interim { color: var(--muted); }
 
@@ -681,7 +724,6 @@ textarea:focus {
   transition: transform .15s ease, background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease;
 }
 .talk:hover:not(:disabled) {
-  transform: translateY(-2px) scale(1.02);
   background: linear-gradient(180deg,
     color-mix(in srgb, var(--accent-strong) 40%, var(--btn-fill)) 0%,
     var(--btn-fill) 70%);
@@ -700,7 +742,6 @@ textarea:focus {
 /* Специфічність .talk:hover:not(:disabled) вища за .talk[aria-pressed] —
    без окремого правила на ховері запис "згасав" би назад у фіолетовий. */
 .talk:hover[aria-pressed="true"]:not(:disabled) {
-  transform: translateY(-2px) scale(1.02);
   background: linear-gradient(180deg, #ff8787 0%, #c92a2a 70%);
   border-color: #c92a2a; color: #fff;
 }
@@ -711,10 +752,18 @@ textarea:focus {
 /* Великий відступ під навігацією навмисно: кроки й кнопки «Попереднє/Наступне»
    — це керування розмовою, а питання з чеклістом нижче — її зміст. Відступ
    каже про цю різницю рівнів ще до того, як людина почне читати. */
-.voice-confirm { display: flex; gap: 10px; justify-content: space-between; margin: 14px 0 30px; flex-wrap: wrap; }
+.voice-confirm { display: flex; gap: 10px; justify-content: space-between; align-items: center; margin: 14px 0 30px; flex-wrap: wrap; }
+/* «Попереднє» і «Раніше сказане» — разом ліворуч, «Наступне» — по правому краю. */
+.voice-confirm-start { display: flex; align-items: center; gap: 10px; }
 /* Навігація — другорядна дія поруч із «Надіслати відповідь»/«Сказати
    заново» внизу: нижча кнопка тут явно каже, що це не головне рішення. */
 .voice-confirm button { height: auto; padding: 9px 16px; font-size: 14px; }
+/* Стрілки без підпису: квадратна кнопка однієї висоти з «Раніше сказане». */
+.voice-confirm button.icon-btn { width: 38px; height: 38px; padding: 0; }
+.voice-confirm button.icon-btn .icon { width: 18px; height: 18px; }
+/* Останнє питання: кнопці повертається підпис, бо це завершення, а не «далі». */
+.voice-confirm button.icon-btn.is-finish { width: auto; padding: 9px 16px; }
+.voice-confirm button.small { height: 38px; padding: 0 16px; }
 
 /* Надіслати / Сказати заново: голос не редагується текстом, тому це єдина
    пара дій над відповіддю. Праймер — головна дія, тому першим і виразнішим. */
@@ -788,7 +837,7 @@ textarea:focus {
    один і той самий запис, тому візуально мусить читатись як один блок, а не
    текст саме собою й кнопка окремо десь праворуч. */
 .answer-block {
-  text-align: left; margin-bottom: 12px;
+  text-align: left; margin-bottom: 0;
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
   padding: 14px 16px 10px;
@@ -819,17 +868,26 @@ textarea:focus {
 /* Усередині картки з записаним текстом (не окремим блоком, як раніше) —
    тонка риска знизу відділяє «про що сказати» від того, що вже сказано,
    і власний відступ картки (answer-block) замінює бічний padding. */
-.answer-block .checklist {
-  margin: 0 0 12px;
-  padding: 0 0 12px;
-  border-bottom: 1px solid var(--line);
+/* Памʼятка стоїть ОКРЕМО під карткою відповіді, на тлі сторінки (без картки й розділювача). */
+.voice-area > .checklist { margin: 14px 0 32px; padding: 0 17px; }
+/* Памʼятка під текстом відповіді згортається: заголовок — кнопка зі стрілкою. */
+.checklist-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; height: auto; padding: 0; margin: 0 0 6px;
+  background: transparent; border: 0; border-radius: var(--radius);
+  color: inherit; text-align: left;
 }
+.checklist-toggle .checklist-title { margin-bottom: 0; }
+.checklist-toggle .chevron { flex: none; width: 16px; height: 16px; color: var(--muted); transition: transform .2s ease; }
+.checklist.collapsed .chevron { transform: rotate(-90deg); }
+.checklist.collapsed ul { display: none; }
+.checklist.collapsed .checklist-toggle { margin-bottom: 0; }
 .checklist-title {
   display: flex; align-items: baseline; gap: 7px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .04em;
-  color: var(--muted);
+  color: var(--accent);
   margin-bottom: 6px;
 }
 .checklist ul { list-style: decimal; margin: 0; padding: 0 0 0 20px; }
@@ -843,7 +901,7 @@ textarea:focus {
 .checklist li {
   color: var(--muted); line-height: 1.35; padding: 2px 0;
 }
-.checklist li::marker { color: var(--line); }
+.checklist li::marker { color: currentColor; }
 /* Уже почуте не викреслюємо: викреслений текст читається як «скасовано»,
    а тут він, навпаки, прозвучав. Лише колір — це підказка, не протокол. */
 .checklist li.done { color: var(--check); }
@@ -869,8 +927,8 @@ textarea:focus {
    праворуч: той самий другорядний рецепт (.ghost.small), що й решта
    секондарі-кнопок, а не окремий .edit-inline зі своїми числами. */
 .word-detail-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.word-detail { margin: 0; font-size: 12px; color: var(--warn); }
-.word-progress.met .word-detail { color: var(--good); }
+.word-detail { margin: 0; font-size: 13px; font-weight: 500; color: var(--warn-strong); }
+.word-progress.met .word-detail { color: var(--good-strong); }
 /* Ще компактніша за звичайну button.small (~40px): тут вона стоїть поряд із
    тонким рядком підпису обсягу, тому 24px висоти впритул до нього доречніше.
    line-height: 1 — інакше успадкований від body (1.6) сам розтягнув би
@@ -938,6 +996,8 @@ textarea:focus {
 }
 .record-check { display: flex; gap: 11px; align-items: flex-start; cursor: pointer; }
 .record-check input { margin: 3px 0 0; flex: none; width: 16px; height: 16px; }
+/* Усі прапорці й радіокнопки — фіолетові (акцент теми), а не системний синій. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-strong); }
 .record-check span { font-size: 14px; line-height: 1.5; color: var(--muted); }
 .record-check strong { color: var(--text); font-weight: 500; }
 
@@ -1005,7 +1065,7 @@ textarea:focus {
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 14px 16px;
 }
-.history-q { font-size: 16px; font-weight: 700; line-height: 1.45; margin: 0 0 20px; }
+.history-q { font-size: var(--q-size-sm, 16px); font-weight: var(--q-weight, 400); line-height: 1.45; margin: 0 0 20px; }
 .history-q-num { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 2px; }
 /* Те саме «про що варто сказати», що й на активному питанні — тут другорядне
    (без картки, менше), бо головне на цьому екрані — вже сказане. Підзаголовок
@@ -1071,31 +1131,41 @@ textarea:focus {
 /* ── Підсумок: питання закінчились, фінал — окрема дія ────────────────────
    Праймер зверху й на всю ширину — головна дія свідомо найпомітніша; решта
    рівноважні, тому рядком нижче. */
-.summary-actions { flex-direction: column; align-items: stretch; margin-top: 8px; }
-.summary-actions button { width: 100%; }
+/* Екран підсумку займає висоту вікна: «Почати спочатку» притиснута до низу, окремо від головних дій. */
+#screen-summary:not(.hidden) { display: flex; flex-direction: column; min-height: calc(100dvh - 64px); }
+/* Основний вміст завжди по центру по вертикалі (авто-відступи зверху й знизу), а «Почати спочатку» внизу. */
+.summary-core { margin: auto 0; }
+/* Дві головні дії рядком і однакової ширини. */
+.summary-main { display: flex; gap: 12px; }
+.summary-main button { flex: 1 1 0; }
+.summary-bottom { padding-top: 32px; }
+/* «Почати спочатку» — окрема дія з іншим наслідком: під розділювачем, окремо від головних. */
+.summary-divider { border: 0; border-top: 1px solid var(--line); margin: 0 0 24px; width: 100%; }
+.summary-bottom #btn-summary-restart { width: 100%; }
 
 /* Наскільки розгорнуто відповідали — обличчям і кольором видно швидше, ніж
    число слів, а підказка внизу пояснює, що це означає й що з цим можна
    зробити (кнопка «Додати ще щось» під нею). Раніше тут була суха крапка з
    назвою тіру — незрозуміло респонденту, навіщо йому це взагалі показують. */
+/* Повідомлення в стилі admonition: плашка з тонованим тлом кольору рівня, рамкою того ж кольору,
+   іконкою ліворуч угорі, жирним заголовком і поясненням тим самим кольором, але легшим. */
 .summary-quality {
+  --tier: var(--muted);
   display: flex; align-items: flex-start; gap: 12px;
-  margin: 0 0 22px; padding: 14px 16px;
-  border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--line);
-  color: var(--muted); text-align: left;
+  margin: 0 0 36px; padding: 14px 16px;
+  border-radius: var(--radius-lg); text-align: left;
+  color: var(--tier);
+  background: color-mix(in srgb, var(--tier) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--tier) 55%, var(--surface));
 }
-.summary-quality-icon { flex: none; width: 28px; height: 28px; }
-.summary-quality-icon .icon { width: 28px; height: 28px; }
+.summary-quality-icon { flex: none; width: 22px; height: 22px; margin-top: 1px; color: var(--tier); }
+.summary-quality-icon .icon { width: 22px; height: 22px; }
 .summary-quality-text { display: flex; flex-direction: column; gap: 2px; }
-.summary-quality-label { font-size: 14px; font-weight: 500; color: var(--text); }
-.summary-quality-hint { font-size: 13px; line-height: 1.4; }
-.summary-quality.tier-good { border-color: var(--good); }
-.summary-quality.tier-good .summary-quality-icon { color: var(--good); }
-.summary-quality.tier-good .summary-quality-label { color: var(--good); }
-.summary-quality.tier-warn { border-color: var(--warn); }
-.summary-quality.tier-warn .summary-quality-icon { color: var(--warn); }
-.summary-quality.tier-warn .summary-quality-label { color: var(--warn); }
-.summary-quality.tier-low .summary-quality-icon { color: var(--muted); }
+.summary-quality-label { font-size: 15px; font-weight: 600; color: var(--tier); }
+.summary-quality-hint { font-size: 14px; line-height: 1.45; color: color-mix(in srgb, var(--tier) 82%, var(--text)); }
+.summary-quality.tier-good { --tier: var(--good); }
+.summary-quality.tier-warn { --tier: var(--warn); }
+.summary-quality.tier-low { --tier: var(--muted); }
 
 /* ── Відгук про досвід проходження (екран «Дякую») ────────────────────────
    Необовʼязково й другорядно: респондент уже зробив головне (відповів на
@@ -1122,17 +1192,161 @@ textarea:focus {
    обрізав би його) і розмір шрифтом, не width/height. Непідсвічені
    пригашені — це вибір ОДНІЄЇ емоції, а не рівень заповнення, тому саме
    контраст «тьмяний/яскравий», а не заливка кольором, показує обране. */
+/* Смайли з підписами: невибрані сірі й приглушені, вибраний (або під курсором) кольоровий і
+   ледь піднімається. НІЧОГО не змінює розмір: підпис завжди тієї самої ваги, смайл не росте,
+   клітинки однакової ширини — тому сусідні елементи не «пливуть» ні при виборі, ні при наведенні.
+   Змінюються лише колір, прозорість і легкий підйом, усе дуже плавно. */
+.feedback-stars.emoji-mode { gap: 4px; }
 .feedback-stars.emoji-mode .feedback-star {
-  font-size: 28px; line-height: 1; padding: 4px 6px;
-  opacity: .45; filter: grayscale(70%);
-  transition: opacity .1s ease, filter .1s ease;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  width: 76px; padding: 6px 4px; line-height: 1;
 }
-.feedback-stars.emoji-mode .feedback-star.is-filled { opacity: 1; filter: none; }
+.feedback-stars.emoji-mode .fe {
+  font-size: 30px; filter: grayscale(1); opacity: .55; transform: translateY(0);
+  transition: transform .5s cubic-bezier(.22, 1, .36, 1), filter .4s ease, opacity .4s ease;
+}
+.feedback-stars.emoji-mode .fl { font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; transition: color .4s ease; }
+.feedback-stars.emoji-mode .feedback-star:hover .fe { filter: grayscale(.4); opacity: .85; transform: translateY(-2px); }
+.feedback-stars.emoji-mode .feedback-star.is-filled .fe { filter: none; opacity: 1; transform: translateY(-3px); }
+.feedback-stars.emoji-mode .feedback-star.is-filled .fl { color: var(--text); }
+/* Зірочки: м'які заокруглені (товста обводка того ж кольору згладжує кути). Невибрані блідо-сірі,
+   вибрані золоті. Наведення — дуже плавне: зірка трохи збільшується й повертається вправо. */
+.feedback-star svg { fill: #e9e7e3; color: #e9e7e3; stroke-width: 3; transition: fill .3s ease, color .3s ease, transform .45s cubic-bezier(.22, 1, .36, 1); }
+.feedback-star:hover svg { transform: scale(1.1) rotate(8deg); }
+.feedback-star.is-filled svg { fill: var(--gold); color: var(--gold); }
+:root[data-theme="dark"] .feedback-star svg { fill: #3a3a3f; color: #3a3a3f; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .feedback-star svg { fill: #3a3a3f; color: #3a3a3f; } }
+:root[data-theme="dark"] .feedback-star.is-filled svg { fill: var(--gold); color: var(--gold); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .feedback-star.is-filled svg { fill: var(--gold); color: var(--gold); } }
+@media (prefers-reduced-motion: reduce) { .feedback-star.is-filled svg, .feedback-stars.emoji-mode .fe { animation: none; transition: none; } }
+/* Серця: той самий кумулятивний вибір, рожева заливка. */
+.feedback-stars.hearts-mode .feedback-star.is-filled svg { fill: #e03131; color: #e03131; }
+/* Цифри: сегментований вибір 1–5, одна цифра за раз. Підсвічена — суцільний акцент. */
+.feedback-stars.numbers-mode { gap: 8px; }
+.feedback-stars.numbers-mode .feedback-star {
+  min-width: 48px; height: 48px; padding: 0; line-height: 1; font-size: 17px; font-weight: 600;
+  color: var(--text); background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 24%, var(--line)); border-radius: var(--radius);
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.feedback-stars.numbers-mode .feedback-star:hover { border-color: var(--text); }
+.feedback-stars.numbers-mode .feedback-star.is-filled { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
 .feedback-block textarea { margin-bottom: 14px; }
-.feedback-block .actions { display: flex; align-items: center; gap: 10px; }
-#btn-feedback-send:disabled { opacity: .5; cursor: default; }
+.feedback-block .actions { display: flex; align-items: center; gap: 12px; }
+/* Форма відгуку збирається з тих самих компонентів, що й решта продукту: поле як усі поля, головна
+   кнопка 48px, друга — outline тієї ж висоти. */
+/* Повідомлення про відгук — у стилі повідомлення підсумку (admonition, рівень «добре»), але по
+   вмісту (hug), а не на всю ширину, і по центру під центрованою подякою. */
 .feedback-thanks {
-  margin-top: 18px; padding: 14px 16px; text-align: left;
-  background: var(--surface); border: 1px solid var(--good); border-radius: var(--radius-lg);
-  color: var(--good); font-size: 14px;
+  --tier: var(--good);
+  display: flex; align-items: center; gap: 10px; width: fit-content; max-width: 100%;
+  margin: 18px auto 0; padding: 12px 16px; text-align: left;
+  border-radius: var(--radius-lg); font-size: 15px; font-weight: 600; color: var(--tier);
+  background: color-mix(in srgb, var(--tier) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--tier) 55%, var(--surface));
 }
+.feedback-thanks .icon { flex: none; width: 22px; height: 22px; }
+
+/* ── Екран подяки: барабан і конфеті ──────────────────────────────────────
+   Фон прозорий. Спочатку палички (вони ПЕРЕД барабаном) по черзі б'ють у мембрану, від кожного удару
+   розходиться хвиля. Тоді з-за барабана на всі боки, до країв плашки, розлітається конфеті
+   різних форм і розмірів з блиском; воно лишається там, де лягло, і ще кілька разів мерехтить.
+   Усе скінченне, щоб не відволікати від відгуку нижче. Менше руху — одразу
+   кінцевий стан. */
+:root { --sparkle: #fff3b0; }
+.success-hero {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  min-height: 148px; margin: 0;
+}
+.clap {
+  position: absolute; z-index: 1; left: 50%; top: -64px; margin-left: -127px;
+  width: 290px; height: auto; overflow: visible; transform: rotate(-14deg); transform-origin: 50% 75%;
+  animation: drum-out .5s ease-in 3.1s forwards;
+}
+/* Хлопавка у відтінках теми. Спочатку ледь труситься, на 0,45 с вистрілює (віддача + спалах), конфеті летить з її горла. */
+.pp-shadow { display: none; }
+.pp-band { fill: color-mix(in srgb, var(--accent-strong) 30%, #fff); }
+.pp-band2 { fill: var(--gold); }
+.pp-dot { fill: #fff; }
+.pp-mouth { fill: color-mix(in srgb, var(--accent-strong) 55%, #fff); }
+.pp-inside { fill: color-mix(in srgb, var(--accent-strong) 45%, #1b0f4a); }
+.pp-flash { fill: #fff; opacity: 0; transform-box: fill-box; transform-origin: center; animation: pp-flash .8s ease-out .1s 3 backwards; }
+.pp-cone { transform-box: fill-box; transform-origin: 50% 92%; animation: pp-pop .8s ease-in-out .1s 3 backwards; }
+/* Три постріли поспіль (0,5 с, 1,3 с, 2,1 с): кожен — замах назад, різка віддача вниз із приплющенням і пружне повернення. */
+@keyframes pp-pop {
+  0% { transform: none; }
+  18% { transform: rotate(-5deg) translateY(2px); }
+  36% { transform: rotate(-9deg) translateY(4px) scale(.97, 1.03); }
+  48% { transform: rotate(-9deg) translateY(4px) scale(.97, 1.03); }
+  54% { transform: rotate(5deg) translateY(16px) scale(1.12, .84); }
+  70% { transform: rotate(-2deg) translateY(-4px) scale(.98, 1.04); }
+  100% { transform: none; }
+}
+@keyframes pp-flash { 0%, 47% { opacity: 0; transform: scale(.3); } 52% { opacity: 1; transform: scale(.7); } 100% { opacity: 0; transform: scale(2.6); } }
+@keyframes drum-out { to { opacity: 0; transform: translateY(10px) scale(.88); } }
+/* Наш текст займає місце барабана, коли той відіграв. */
+.success-copy {
+  position: relative; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; text-align: center; padding: 0 12px;
+  opacity: 0; animation: copy-in .6s ease-out 3.3s forwards;
+}
+.success-copy h1 { margin: 0 0 10px; }
+.success-copy .consent { margin: 0; max-width: 520px; text-wrap: balance; }
+@keyframes copy-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* Конфеті як справжнє: вилітає з-за барабана, гальмується об повітря, на піку повисає, потім
+   кружляє донизу (змінюючи блиск, коли повертається ребром), падає до самого низу сторінки і
+   поступово зникає. Три вкладені шари, щоб рухи не заважали один одному: span — вбік,
+   i — вгору-вниз і згасання, b — кружляння. */
+:root { --pink: #e0569a; --gold: #f2b632; }
+/* Екран займає всю висоту вікна: падіння конфеті закінчується внизу сторінки, а все, що вилетіло
+   за екран, обрізається і не створює прокрутки. */
+#screen-done:not(.hidden) {
+  min-height: calc(100dvh - 64px); overflow: clip;
+  /* Вміст по центру екрана по вертикалі; на низькому вікні він просто росте вниз. */
+  display: flex; flex-direction: column; justify-content: center;
+}
+.confetti { position: absolute; z-index: 0; left: 50%; top: calc(55% - 36px); width: 0; height: 0; opacity: 0; pointer-events: none; animation: cf-show 0s calc(var(--dl, 2.5s)) forwards, cf-x var(--t, 4s) cubic-bezier(.2, .45, .55, .95) var(--dl, 2.5s) forwards; }
+.confetti i { position: absolute; left: 0; top: 0; display: block; animation: cf-y var(--t, 4s) linear var(--dl, 2.5s) forwards, cf-out var(--t, 4s) linear var(--dl, 2.5s) forwards; }
+.confetti b {
+  position: absolute; left: calc(var(--w, 8px) / -2); top: calc(var(--h, 12px) / -2); display: block;
+  width: var(--w, 8px); height: var(--h, 12px); border-radius: 2px;
+  background: linear-gradient(115deg, color-mix(in srgb, var(--c) 40%, #fff) 0%, var(--c) 28%, #fff 48%, var(--c) 66%, color-mix(in srgb, var(--c) 70%, #000) 100%);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--c) 55%, #fff);
+  animation: cf-flutter var(--f, .8s) linear var(--dl, 2.5s) var(--n, 5);
+}
+.confetti b.ribbon { border-radius: 3px; }
+.confetti b.dot { border-radius: 50%; }
+.confetti b.spark {
+  border-radius: 0; background: var(--c);
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+}
+@keyframes cf-show { to { opacity: 1; } }
+@keyframes cf-x { to { transform: translateX(var(--dx)); } }
+@keyframes cf-y {
+  0% { transform: translateY(0); animation-timing-function: cubic-bezier(.15, .65, .35, 1); }
+  26% { transform: translateY(calc(var(--up) * -1)); animation-timing-function: cubic-bezier(.4, .1, .65, .85); }
+  100% { transform: translateY(calc(100dvh - 150px + var(--fy))); }
+}
+/* Згасає наприкінці падіння, коли конфеті вже майже внизу. */
+@keyframes cf-out { 0%, 72% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes cf-flutter {
+  0% { transform: rotateZ(var(--rot)) rotateX(0deg); filter: hue-rotate(0deg) brightness(1) saturate(1.1); }
+  25% { filter: hue-rotate(70deg) brightness(1.7) saturate(1.4); }
+  50% { transform: rotateZ(calc(var(--rot) + 90deg)) rotateX(180deg); filter: hue-rotate(150deg) brightness(.85) saturate(1.2); }
+  75% { filter: hue-rotate(230deg) brightness(1.8) saturate(1.5); }
+  100% { transform: rotateZ(calc(var(--rot) + 180deg)) rotateX(360deg); filter: hue-rotate(320deg) brightness(1) saturate(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clap { animation: none; opacity: 0; }
+  .pp-cone, .pp-flash { animation: none; }
+  .success-copy { animation: none; opacity: 1; }
+  /* Менше руху: конфеті не показуємо взагалі. */
+  .confetti { display: none; }
+}
+
+/* DELETE WITH: the design-canvas/ folder. Кадр канвасу «барабан»: тримає екран подяки на першому етапі
+   анімації (хлопавку видно, тексту й конфеті ще немає). Атрибут ставить лише ?canvas=done-drum на localhost. */
+html[data-canvas-hold="drum"] .clap, html[data-canvas-hold="drum"] .pp-cone, html[data-canvas-hold="drum"] .pp-flash { animation: none; }
+html[data-canvas-hold="drum"] .success-copy { animation: none; opacity: 0; }
+html[data-canvas-hold="drum"] .confetti { display: none; }

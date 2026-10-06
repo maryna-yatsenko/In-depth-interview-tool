@@ -156,8 +156,16 @@ def make_handler(
     store: SessionStore,
     admin_root: Optional[str] = None,
     bank_provider=None,
+    surface: str = "all",
 ):
-    """`admin_root` = None означає, що адмінки в цьому запуску немає взагалі
+    """`surface` ділить один код на два окремі сайти (кожен — власний проєкт на Vercel):
+    "respondent" — лише сторінка респондента, без адмінки й без списку інтервʼю;
+    "admin" — лише панель дослідника на корені `/`, без респондентських ендпоінтів;
+    "all" — як раніше (локальна розробка, `local/serve.py`);
+    "auto" — одним деплоєм, два сайти за доменом: хост із `ADMIN_HOSTS` (через кому) отримує панель,
+    будь-який інший (включно з унікальними адресами деплоїв) — лише форму респондента.
+
+    `admin_root` = None означає, що адмінки в цьому запуску немає взагалі
     (не «є, але закрита»). Див. app/api/admin.py про причину.
 
     `default_entry`/`registry` — простір, з яким сервер запущено, завжди
@@ -320,8 +328,46 @@ def make_handler(
             self.end_headers()
             self.wfile.write(content)
 
+        # ── поділ на два сайти (див. `surface` вище) ─────────────────────
+        _ADMIN_GET = ("/api/admin", "/api/sessions", "/voice/", "/audio/topic/", "/images/")
+        _ADMIN_FILES = ("/admin", "/admin.html", "/admin.css", "/admin.js", "/styles.css", "/audio.js")
+
+        def _surface(self) -> str:
+            if surface != "auto":
+                return surface
+            host = (self.headers.get("Host") or "").split(":")[0].lower()
+            admins = [h.strip().lower() for h in os.environ.get("ADMIN_HOSTS", "").split(",") if h.strip()]
+            return "admin" if host in admins else "respondent"
+
+        def _surface_blocks(self, method: str, path: str) -> bool:
+            current = self._surface()
+            if current == "respondent":
+                hidden = (path in ("/admin", "/admin.html", "/admin.css", "/admin.js")
+                          or path.startswith("/api/admin") or path == "/api/sessions")
+            elif current == "admin":
+                if method == "GET":
+                    allowed = (path == "/" or path in self._ADMIN_FILES
+                               or path.startswith(self._ADMIN_GET))
+                else:
+                    allowed = path.startswith("/api/admin")
+                hidden = not allowed
+            else:
+                hidden = False
+            if hidden:
+                self._send_json({"error": "not found"}, 404)
+            return hidden
+
         def do_GET(self):
             path = self.path.split("?")[0]
+            if self._surface_blocks("GET", path):
+                return
+            if self._surface() == "admin" and path == "/":
+                path = "/admin"
+            if path == "/api/admin/site":
+                # Адреса сайту респондента для кнопки «Скопіювати посилання»: у двосайтовому
+                # деплої панель дослідника живе на іншому домені.
+                self._send_json({"respondent_url": os.environ.get("RESPONDENT_URL", "")})
+                return
             if not path.startswith("/api/admin"):
                 self._use_space()
             if path.startswith("/audio/topic/"):
@@ -354,6 +400,8 @@ def make_handler(
 
         def do_POST(self):
             path = self.path.split("?")[0]
+            if self._surface_blocks("POST", path):
+                return
             if not path.startswith("/api/admin"):
                 self._use_space()
             if path == "/api/voice":
@@ -417,6 +465,9 @@ def make_handler(
                 # варіант, ігноруючи те, що дослідник змінив в адмінці.
                 "feedback_prompt": guide.feedback_prompt or "Як вам було проходити це інтервʼю?",
                 "feedback_style": guide.feedback_style,
+                # Вигляд тексту питання, як його задав дослідник.
+                "question_font_size": guide.question_font_size,
+                "question_font_weight": guide.question_font_weight,
             }
 
         def _checklist(self, session: Session):
