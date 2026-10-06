@@ -751,17 +751,22 @@ class Session:
         """
         if not self.script:
             return []
-        current_phase = self.current_question().get("section", phases.WARMUP)
+        current_question = self.current_question()
+        current_phase = current_question.get("section", phases.WARMUP)
+        current_block = current_question.get("block", "")
         answered_ids = {t.get("question_id") for t in self.turns
                         if t.get("role") == "respondent" and t.get("question_id")}
         out = []
-        for sec in self.plan.sections():
-            items_in = [q for q in self.script if q["section"] == sec["phase"]]
+        for sec in self.plan.sections(blocks=True):
+            has_block = "block" in sec
+            items_in = [q for q in self.script if q["section"] == sec["phase"]
+                        and (not has_block or q.get("block", "") == sec["block"])]
             answered = len([q for q in items_in if q["id"] in answered_ids])
             out.append({
                 "title": sec["title"], "phase": sec["phase"],
                 "total": len(items_in), "answered": answered,
-                "current": sec["phase"] == current_phase,
+                "current": sec["phase"] == current_phase
+                           and (not has_block or sec["block"] == current_block),
             })
         return out
 

@@ -95,6 +95,10 @@ class Topic:
     # «Розбіжна інформація» й «Розбіжність поглядів» для неї виглядають однаково
     # й не означають нічого. Порожнє поле — показуємо `title`.
     shown_as: str = ""
+    # Смисловий блок, до якого належить питання («Знайомство», «Вибір»…).
+    # Порожнє — без блоку. Блоком стає серія сусідніх питань з однаковою
+    # назвою: кожна така серія — окремий крок прогресу в респондента.
+    block: str = ""
 
 
 @dataclass
@@ -253,6 +257,7 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
                 ask_if_missed=raw.get("ask_if_missed", ""),
                 goal=raw.get("goal", ""),
                 shown_as=raw.get("shown_as", ""),
+                block=str(raw.get("block") or "").strip(),
             )
         )
 

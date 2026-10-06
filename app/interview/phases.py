@@ -141,7 +141,8 @@ class Plan:
                 # про що взагалі йтиметься, і розповідає повніше.
                 "expects": [topic.label for topic in self.guide.topics],
             })
-        for topic in self.guide.topics:
+        block_keys = self.topic_block_keys()
+        for topic_index, topic in enumerate(self.guide.topics):
             # Одне питання на тему — саме те, що дослідник написав як
             # `ask_if_missed`. Інтервʼюер більше не ставить другого,
             # доводжувального питання: рушій не задає жодних уточнень понад
@@ -151,6 +152,7 @@ class Plan:
             items.append({
                 "id": "%s/1" % topic.id, "text": topic.ask_if_missed,
                 "section": TOPICS, "topic_id": topic.id,
+                "block": block_keys[topic_index],
                 "topic_title": topic.label,
                 "expects": list(topic.must_learn or []),
             })
@@ -163,11 +165,26 @@ class Plan:
             })
         return items
 
-    def sections(self) -> List[Dict[str, str]]:
+    def topic_block_keys(self) -> List[str]:
+        """Ключ блоку для кожної теми: серія сусідніх тем з однією назвою —
+        один блок. Теми без назви блоку мають порожній ключ."""
+        keys, previous, run = [], None, -1
+        for topic in self.guide.topics:
+            name = getattr(topic, "block", "") or ""
+            if name != previous:
+                run += 1
+                previous = name
+            keys.append("b%d" % run if name else "")
+        return keys
+
+    def sections(self, blocks: bool = False) -> List[Dict[str, str]]:
         """Розділи інтервʼю — його справжня структура, а не лічильник питань.
 
         Чотири, і кожен існує лише якщо гайд його задав: у просторі без вільної
         розповіді розділу «Ваша розповідь» немає взагалі.
+
+        `blocks=True` розгортає «Теми» у окремі кроки за смисловими блоками
+        гайда (`Topic.block`); без блоків лишається один крок «Теми».
         """
         items = [{"phase": WARMUP, "title": "Початок"}]
         if self.guide.narrative_prompt:
@@ -175,7 +192,20 @@ class Plan:
             # обрізався трьома точками в пройденому розділі.
             items.append({"phase": NARRATIVE, "title": "Розповідь"})
         if self.guide.topics:
-            items.append({"phase": TOPICS, "title": "Теми"})
+            titles = []
+            if blocks:
+                keys = self.topic_block_keys()
+                seen = set()
+                for key, topic in zip(keys, self.guide.topics):
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    titles.append((key, (getattr(topic, "block", "") or "").strip() or "Теми"))
+            if titles:
+                for key, title in titles:
+                    items.append({"phase": TOPICS, "title": title, "block": key})
+            else:
+                items.append({"phase": TOPICS, "title": "Теми"})
         if self.guide.closing_questions:
             items.append({"phase": CLOSING, "title": "Підсумок"})
         return items

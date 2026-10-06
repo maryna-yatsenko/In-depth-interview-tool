@@ -157,6 +157,34 @@ class TestScriptedFlow(unittest.TestCase):
                       if s["phase"] == phases.WARMUP)
         self.assertEqual(opening["answered"], 1)
 
+    def test_topic_blocks_become_progress_steps(self):
+        """Смислові блоки гайда (`Topic.block`) — окремі кроки прогресу.
+
+        Блок — це серія сусідніх питань з однаковою назвою; питання без блоку
+        лишаються одним кроком «Теми», як було до появи блоків.
+        """
+        topics = self.guide.topics
+        self.assertGreaterEqual(len(topics), 4)
+        for topic in topics:
+            topic.block = ""
+        topics[0].block = topics[1].block = "Знайомство"
+        topics[2].block = "Вибір"
+        session = Session(self.space, self.guide, Counting())
+        session.start()
+        info = session.progress_info()
+        titles = [s["title"] for s in info["sections"]]
+        self.assertEqual(titles, ["Початок", "Розповідь", "Знайомство", "Вибір", "Теми", "Підсумок"])
+        by_title = {s["title"]: s for s in info["sections"]}
+        self.assertEqual(by_title["Знайомство"]["total"], 2)
+        self.assertEqual(by_title["Вибір"]["total"], 1)
+        self.assertEqual(sum(1 for s in info["sections"] if s["current"]), 1)
+
+        # Курсор у темі другого блоку — «поточним» стає саме цей крок.
+        while session.current_question().get("topic_id") != topics[2].id:
+            session.go(1)
+        info = session.progress_info()
+        self.assertEqual([s["title"] for s in info["sections"] if s["current"]], ["Вибір"])
+
     def test_depth_stats_count_distinct_questions(self):
         """Глибина рахує ПИТАННЯ, а не ходи: дві репліки на одне питання —
         це одна відповідальна одиниця, довша, не дві."""

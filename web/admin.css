@@ -1620,3 +1620,71 @@ body.admin .must-learn-add .icon, body.admin .add-topic .icon { order: 0; width:
 
 /* Порожнє повідомлення про помилку не займає місця: відступ під кнопками нової форми рівний бічним. */
 .new-space .error-text:empty { display: none; }
+
+
+/* ── Смислові блоки питань ─────────────────────────────────────────────
+   Блок — контейнер на тлі шапки, а питання всередині лишаються звичайними
+   білими картками: блок групує, а не конкурує з ними. */
+.topic-block {
+  background: var(--head-bg); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 24px;
+}
+.topic-block-head { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+/* Мітка над заголовком + саме поле назви: поле без рамки читається як
+   заголовок рівня «блок», над рівнем «питання» (16px) — тому 18px. Рамка
+   зʼявляється лише на ховері/фокусі, коли це вже поле для редагування. */
+.block-title-box { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; }
+.block-tag {
+  flex: none; font-size: 18px; font-weight: 700; line-height: 34px; height: 34px;
+  color: var(--muted);
+}
+.topic-block-head .block-name {
+  flex: 1; min-width: 0; height: 34px; padding: 0 8px; margin: 0; box-sizing: border-box;
+  font-size: 18px; font-weight: 700; color: var(--text);
+  background: transparent; border: 1px solid transparent; box-shadow: none;
+}
+.topic-block-head .block-name:hover { border-color: var(--line); }
+.topic-block-head .block-name:focus { background: var(--surface); }
+.block-count { flex: none; font-size: 13px; color: var(--muted); }
+.icon-btn.block-toggle, .icon-btn.block-remove {
+  flex: none; align-self: center; width: 32px; height: 32px; min-width: 32px; padding: 0; font-size: 14px;
+}
+.block-toggle .icon { transition: transform .15s ease; }
+.topic-block.collapsed .block-toggle .icon { transform: rotate(-90deg); }
+.topic-block.collapsed .topic-block-cards,
+.topic-block.collapsed .topic-block-foot { display: none; }
+.topic-block.collapsed .topic-block-head { margin-bottom: 0; }
+.topic-block-foot .add-topic { margin-bottom: 0; }
+
+/* Вікно порядку: два рівні — шапка блоку тягне блок, рядки тягнуться між блоками. */
+.reorder-block { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px; }
+.reorder-block.dragging { opacity: .4; }
+.reorder-block-head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 4px 8px;
+  cursor: grab; font-weight: 600; font-size: 14px; color: var(--heading);
+}
+.reorder-block-body { display: flex; flex-direction: column; gap: 8px; min-height: 8px; }
+
+/* «Додати блок» — окрема, суцільна кнопка (як інші .ghost), щоб не плутатись
+   з пунктирним «Додати питання» всередині блоку: перше створює розділ,
+   друге — лише рядок у ньому. */
+body.admin .add-block { gap: 10px; height: 44px; margin: 0 0 24px; padding: 0 20px; }
+body.admin .add-block .icon { order: 0; width: 18px; height: 18px; color: var(--heading); }
+
+/* Дві різні дії — два різні вигляди. «Додати питання» — порожній слот-картка
+   на всю ширину блоку; «додати пункт» — тихе текстове посилання під списком
+   пунктів чекліста, вирівняне по лівому краю їхніх полів. */
+.topic-block-foot .add-topic.block-add { height: 48px; padding: 0 16px; font-size: 15px; }
+body.admin .must-learn-add {
+  width: auto !important; margin-left: 48px; height: auto; padding: 6px 0 !important;
+  border: none !important; border-radius: 0; justify-content: flex-start;
+  font-size: 14px; font-weight: 500; color: var(--heading) !important;
+}
+body.admin .must-learn-add:hover { text-decoration: underline; color: var(--heading) !important; border: none !important; }
+
+/* Згорнути/розгорнути — нейтральна дія, а не деструктивна: на ховері
+   темнішає, а не червоніє, як решта .icon-btn (ті — «видалити»). */
+.icon-btn.block-toggle:hover:not(:disabled) {
+  background: var(--surface); color: var(--text);
+  border-color: color-mix(in srgb, var(--muted) 55%, var(--line));
+}

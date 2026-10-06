@@ -304,87 +304,264 @@
     return row;
   }
 
-  /* Номер картки — саме її позиція серед карток, а не щось збережене в
-     темі: перерахувати треба після кожної зміни порядку/кількості, а не
-     один раз при рендері. Та сама нагода вимикає «вгору»/«вниз» на краях
-     і «видалити» — коли лишилось одне питання. */
+  /* ── Смислові блоки ─────────────────────────────────────────────────────
+     Блок — контейнер: назва вгорі, питання всередині, власна кнопка
+     «Додати питання». У гайді це лише поле `block` у кожному питанні (серія
+     сусідніх питань з однаковою назвою — один крок прогресу в респондента),
+     тому формат даних лишається пласким, а контейнери — це вигляд. */
+  function topicCards() {
+    return Array.prototype.slice.call(document.querySelectorAll(".topic-card"));
+  }
+
+  function blockEls() {
+    return Array.prototype.slice.call(document.querySelectorAll(".topic-block"));
+  }
+
+  function pluralQuestions(n) {
+    var tail = n % 100;
+    if (tail >= 11 && tail <= 14) return "питань";
+    var last = n % 10;
+    if (last >= 1 && last <= 4) return "питання";
+    return "питань";
+  }
+
+  /* Номер картки — саме її позиція серед усіх карток гайда, а не щось
+     збережене в темі: перераховуємо після кожної зміни порядку/кількості.
+     Блок, з якого прибрали всі питання, зникає (крім єдиного). */
   function refreshTopicOrderControls() {
-    var cards = document.querySelectorAll(".topic-card");
-    Array.prototype.forEach.call(cards, function (card, index) {
+    blockEls().forEach(function (block) {
+      if (!block.querySelector(".topic-card") && blockEls().length > 1) block.remove();
+    });
+    var blocks = blockEls();
+    var cards = topicCards();
+    cards.forEach(function (card, index) {
       var number = card.querySelector(".topic-number");
       if (number) number.textContent = (index + 1) + ".";
       var remove = card.querySelector(".topic-remove");
       if (remove) remove.disabled = cards.length <= 1;
     });
+    blocks.forEach(function (block) {
+      var n = block.querySelectorAll(".topic-card").length;
+      block.querySelector(".block-count").textContent = n + " " + pluralQuestions(n);
+      block.querySelector(".block-remove").disabled = blocks.length <= 1;
+    });
   }
 
-  /* Порядок питань — попапом, перетягуванням, бачачи лише заголовки: серед
-     повних карток (питання, чекліст, запис голосу) стрілки на кожній губились,
-     а прокручувати весь гайд, щоб перенести питання на три позиції вище,
-     незручно. Тут — легкі рядки-проксі (число + назва), самі картки не
-     чіпаються, доки не натиснуто «Готово»: тоді порядок рядків переносимо
-     на реальні картки одним проходом. */
+  function uniqueBlockName() {
+    var names = blockEls().map(function (b) { return b.querySelector(".block-name").value.trim(); });
+    var name = "Новий блок";
+    for (var i = 2; names.indexOf(name) !== -1; i++) name = "Новий блок " + i;
+    return name;
+  }
+
+  function buildBlock(name) {
+    var block = document.createElement("section");
+    block.className = "topic-block";
+
+    var head = document.createElement("div");
+    head.className = "topic-block-head";
+
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "icon-btn block-toggle";
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.title = "Згорнути/розгорнути блок";
+    toggle.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+    toggle.addEventListener("click", function () {
+      var collapsed = block.classList.toggle("collapsed");
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+    head.appendChild(toggle);
+
+    // Назва — заголовок блоку: над нею дрібна підпис-мітка, щоб було ясно,
+    // що це за рівень, а саме поле читається як заголовок, не як звичайне поле.
+    var titleBox = document.createElement("div");
+    titleBox.className = "block-title-box";
+    var tag = document.createElement("span");
+    tag.className = "block-tag";
+    tag.textContent = "Блок:";
+    titleBox.appendChild(tag);
+    var input = document.createElement("input");
+    input.type = "text";
+    input.className = "block-name";
+    input.value = name || "";
+    input.placeholder = "Без назви";
+    input.setAttribute("aria-label", "Назва блоку");
+    titleBox.appendChild(input);
+    head.appendChild(titleBox);
+
+    var count = document.createElement("span");
+    count.className = "block-count";
+    head.appendChild(count);
+
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "icon-btn block-remove";
+    removeBtn.innerHTML = ICONS.trash;
+    removeBtn.title = "Видалити блок разом із його питаннями";
+    removeBtn.addEventListener("click", function () {
+      var filled = Array.prototype.filter.call(
+        block.querySelectorAll(".topic-question-input"),
+        function (field) { return field.value.trim(); }).length;
+      if (filled && !window.confirm("Видалити блок разом із питаннями (" + filled + ")?")) return;
+      block.remove();
+      refreshTopicOrderControls();
+    });
+    head.appendChild(removeBtn);
+    block.appendChild(head);
+
+    var cards = document.createElement("div");
+    cards.className = "topic-block-cards";
+    block.appendChild(cards);
+
+    var foot = document.createElement("div");
+    foot.className = "topic-block-foot";
+    var add = document.createElement("button");
+    add.type = "button";
+    add.className = "add-topic block-add";
+    add.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>Додати питання</span>';
+    add.addEventListener("click", function () {
+      var card = buildTopicCard({});
+      cards.appendChild(card);
+      refreshTopicOrderControls();
+      var field = card.querySelector(".topic-question-input");
+      if (field) field.focus();
+    });
+    foot.appendChild(add);
+    block.appendChild(foot);
+    return block;
+  }
+
+  function addBlock() {
+    var block = buildBlock(uniqueBlockName());
+    block.querySelector(".topic-block-cards").appendChild(buildTopicCard({}));
+    el("guide-topics-list").appendChild(block);
+    refreshTopicOrderControls();
+    var field = block.querySelector(".block-name");
+    field.focus();
+    field.select();
+  }
+
+  function lastBlockCards() {
+    var blocks = blockEls();
+    var block = blocks[blocks.length - 1];
+    if (!block) {
+      block = buildBlock("");
+      el("guide-topics-list").appendChild(block);
+    }
+    return block.querySelector(".topic-block-cards");
+  }
+
+  /* Порядок — попапом, перетягуванням, бачачи лише заголовки: серед повних
+     карток (питання, чекліст, запис голосу) прокручувати весь гайд, щоб
+     перенести питання на три позиції вище, незручно. Тут два рівні: блоки
+     (тягнуться за шапку) й питання в них (тягнуться між блоками). Самі
+     картки не чіпаються, доки не натиснуто «Зберегти». */
   function openTopicOrderModal() {
     var list = el("topic-order-list");
     list.innerHTML = "";
-    Array.prototype.forEach.call(document.querySelectorAll(".topic-card"), function (card) {
-      var questionInput = card.querySelector(".topic-question-input");
-      var label = (questionInput && questionInput.value.trim()) || "(без назви)";
-      var row = document.createElement("div");
-      row.className = "reorder-row";
-      row.draggable = true;
-      row._card = card;
+    blockEls().forEach(function (block) {
+      var item = document.createElement("div");
+      item.className = "reorder-block";
+      item._block = block;
+
+      var head = document.createElement("div");
+      head.className = "reorder-block-head";
+      head.draggable = true;
       var handle = document.createElement("span");
       handle.className = "reorder-handle";
       handle.textContent = "⠿";
       handle.setAttribute("aria-hidden", "true");
-      row.appendChild(handle);
-      var text = document.createElement("span");
-      text.className = "reorder-title";
-      text.textContent = label;
-      row.appendChild(text);
-      wireReorderRow(row);
-      list.appendChild(row);
+      head.appendChild(handle);
+      var title = document.createElement("span");
+      title.className = "reorder-block-title";
+      title.textContent = block.querySelector(".block-name").value.trim() || "Без назви";
+      head.appendChild(title);
+      item.appendChild(head);
+
+      var body = document.createElement("div");
+      body.className = "reorder-block-body";
+      Array.prototype.forEach.call(block.querySelectorAll(".topic-card"), function (card) {
+        var questionInput = card.querySelector(".topic-question-input");
+        var row = document.createElement("div");
+        row.className = "reorder-row";
+        row.draggable = true;
+        row._card = card;
+        row._label = (questionInput && questionInput.value.trim()) || "(без назви)";
+        var rowHandle = document.createElement("span");
+        rowHandle.className = "reorder-handle";
+        rowHandle.textContent = "⠿";
+        rowHandle.setAttribute("aria-hidden", "true");
+        row.appendChild(rowHandle);
+        var text = document.createElement("span");
+        text.className = "reorder-title";
+        row.appendChild(text);
+        body.appendChild(row);
+      });
+      item.appendChild(body);
+      list.appendChild(item);
     });
     renumberReorderRows();
     el("topic-order-modal").classList.remove("hidden");
   }
 
   function renumberReorderRows() {
-    Array.prototype.forEach.call(document.querySelectorAll(".reorder-row"), function (row, index) {
+    Array.prototype.forEach.call(document.querySelectorAll("#topic-order-list .reorder-row"), function (row, index) {
       row.querySelector(".reorder-title").textContent = (index + 1) + ". " + row._label;
     });
   }
 
-  function wireReorderRow(row) {
-    // Чиста назва (без номера) — так renumberReorderRows завжди підставляє
-    // правильний номер, скільки разів rядки не переставляй.
-    row._label = row.querySelector(".reorder-title").textContent;
-    row.addEventListener("dragstart", function (e) {
-      row.classList.add("dragging");
+  (function wireTopicOrderDrag() {
+    var list = el("topic-order-list");
+    var dragging = null;
+    list.addEventListener("dragstart", function (e) {
+      var row = e.target.closest(".reorder-row");
+      var head = e.target.closest(".reorder-block-head");
+      dragging = row || (head && head.parentNode) || null;
+      if (!dragging) return;
+      dragging.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
       // Дані самому drag-подію не потрібні — переносимо вузли напряму;
       // рядок все одно потрібен, щоб Firefox узагалі дозволив drag.
       try { e.dataTransfer.setData("text/plain", ""); } catch (err) { /* байдуже */ }
     });
-    row.addEventListener("dragend", function () {
-      row.classList.remove("dragging");
+    list.addEventListener("dragend", function () {
+      if (dragging) dragging.classList.remove("dragging");
+      dragging = null;
       renumberReorderRows();
     });
-    row.addEventListener("dragover", function (e) {
+    list.addEventListener("dragover", function (e) {
+      if (!dragging) return;
       e.preventDefault();
-      var dragging = document.querySelector(".reorder-row.dragging");
-      if (!dragging || dragging === row) return;
-      var rect = row.getBoundingClientRect();
-      var before = (e.clientY - rect.top) < rect.height / 2;
-      row.parentNode.insertBefore(dragging, before ? row : row.nextSibling);
+      var overBlock = e.target.closest(".reorder-block");
+      if (!overBlock) return;
+      if (dragging.classList.contains("reorder-row")) {
+        var overRow = e.target.closest(".reorder-row");
+        if (overRow && overRow !== dragging) {
+          var rect = overRow.getBoundingClientRect();
+          var before = (e.clientY - rect.top) < rect.height / 2;
+          overRow.parentNode.insertBefore(dragging, before ? overRow : overRow.nextSibling);
+        } else if (!overRow && overBlock !== dragging.closest(".reorder-block")) {
+          // Над шапкою чи порожнім місцем іншого блоку — питання лягає в його кінець.
+          overBlock.querySelector(".reorder-block-body").appendChild(dragging);
+        }
+      } else if (overBlock !== dragging && e.target.closest(".reorder-block-head")) {
+        var headRect = e.target.closest(".reorder-block-head").getBoundingClientRect();
+        var above = (e.clientY - headRect.top) < headRect.height / 2;
+        list.insertBefore(dragging, above ? overBlock : overBlock.nextSibling);
+      }
     });
-  }
+  })();
 
   function applyTopicOrderFromModal() {
     var host = el("guide-topics-list");
-    Array.prototype.forEach.call(document.querySelectorAll(".reorder-row"), function (row) {
-      host.appendChild(row._card);
+    Array.prototype.forEach.call(document.querySelectorAll("#topic-order-list .reorder-block"), function (item) {
+      var block = item._block;
+      host.appendChild(block);
+      var cardsHost = block.querySelector(".topic-block-cards");
+      Array.prototype.forEach.call(item.querySelectorAll(".reorder-row"), function (row) {
+        cardsHost.appendChild(row._card);
+      });
     });
     refreshTopicOrderControls();
   }
@@ -602,12 +779,30 @@
   function renderTopicCards(topics) {
     var host = el("guide-topics-list");
     host.innerHTML = "";
-    (topics || []).forEach(function (topic) { host.appendChild(buildTopicCard(topic)); });
+    var current = null;
+    var currentName = null;
+    (topics || []).forEach(function (topic) {
+      var name = (topic.block || "").trim();
+      if (!current || name !== currentName) {
+        current = buildBlock(name);
+        currentName = name;
+        host.appendChild(current);
+      }
+      current.querySelector(".topic-block-cards").appendChild(buildTopicCard(topic));
+    });
     refreshTopicOrderControls();
   }
 
   function collectTopicsFromCards() {
-    return Array.prototype.map.call(document.querySelectorAll(".topic-card"), function (card, index) {
+    var entries = [];
+    blockEls().forEach(function (block) {
+      var blockName = block.querySelector(".block-name").value.trim();
+      Array.prototype.forEach.call(block.querySelectorAll(".topic-card"), function (card) {
+        entries.push({ card: card, block: blockName });
+      });
+    });
+    return entries.map(function (entry, index) {
+      var card = entry.card;
       var original = card._original || {};
       var askIfMissed = card.querySelector(".topic-question-input").value.trim();
       // Пункти чекліста — завжди прості рядки: рушій більше не судить, чи
@@ -625,6 +820,8 @@
         must_learn: mustLearn
       });
       delete topic.ask_for_detail;
+      if (entry.block) topic.block = entry.block;
+      else delete topic.block;
       return topic;
     });
   }
@@ -1393,7 +1590,7 @@
       catch (err) { errorNode.textContent = "Файл не схожий на список питань: " + err.message; return; }
       if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
       if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
-      var host = el("guide-topics-list");
+      var host = lastBlockCards();
       questions.forEach(function (q) {
         host.appendChild(buildTopicCard({ ask_if_missed: q.text, must_learn: q.must_learn }));
       });
@@ -1427,10 +1624,7 @@
     el("import-dismiss").addEventListener("click", function () { el("import-result").classList.add("hidden"); });
   })();
 
-  el("btn-add-topic").addEventListener("click", function () {
-    el("guide-topics-list").appendChild(buildTopicCard({}));
-    refreshTopicOrderControls();
-  });
+  el("btn-add-block").addEventListener("click", addBlock);
   el("btn-reorder-topics").addEventListener("click", openTopicOrderModal);
   // "Зберегти" застосовує перетягнутий порядок; × у шапці — просто
   // закриває, без застосування (як скасувати), той самий принцип, що
