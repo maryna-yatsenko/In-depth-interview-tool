@@ -459,7 +459,10 @@
       var remove = card.querySelector(".topic-remove");
       if (remove) remove.disabled = cards.length <= 1;
     });
-    blocks.forEach(function (block) {
+    blocks.forEach(function (block, index) {
+      // Блоки нумеруються за порядком у гайді: «Блок 1:», «Блок 2:»… — число
+      // не зберігається, а перераховується після кожної зміни порядку.
+      block.querySelector(".block-tag").textContent = "Блок " + (index + 1) + ":";
       var n = block.querySelectorAll(".topic-card").length;
       block.querySelector(".block-count").textContent = n + " " + pluralQuestions(n);
       block.querySelector(".block-remove").disabled = blocks.length <= 1;
@@ -595,7 +598,7 @@
   function openTopicOrderModal() {
     var list = el("topic-order-list");
     list.innerHTML = "";
-    blockEls().forEach(function (block) {
+    blockEls().forEach(function (block, blockIndex) {
       var item = document.createElement("div");
       item.className = "reorder-block";
       item._block = block;
@@ -610,7 +613,8 @@
       head.appendChild(handle);
       var title = document.createElement("span");
       title.className = "reorder-block-title";
-      title.textContent = block.querySelector(".block-name").value.trim() || "Без назви";
+      var blockName = block.querySelector(".block-name").value.trim();
+      title.textContent = "Блок " + (blockIndex + 1) + (blockName ? ": " + blockName : "");
       head.appendChild(title);
       item.appendChild(head);
 
