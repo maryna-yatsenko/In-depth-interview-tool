@@ -1764,3 +1764,19 @@ body.admin .space-menu-item.is-danger, body.admin .space-menu-item.is-danger .ic
 body.admin .space-menu-item.is-danger:hover, body.admin .space-menu-item.is-danger:focus-visible {
   background: color-mix(in srgb, var(--danger) 12%, var(--surface));
 }
+
+/* Перше слово про перетягування: елемент «у руці» блідне,
+   решта плавно ковзає на його місце (сам рух — у admin.js, flipMove). */
+#space-list li.space-item, .reorder-row, .reorder-block, .must-learn-item {
+  transition: opacity .2s ease, box-shadow .2s ease;
+}
+#space-list li.space-item.dragging, .reorder-row.dragging, .must-learn-item.dragging { opacity: .35; }
+.reorder-row, .reorder-block-head, .must-learn-handle { cursor: grab; }
+.reorder-row:active, .reorder-block-head:active, .must-learn-handle:active { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) {
+  #space-list li.space-item, .reorder-row, .reorder-block, .must-learn-item { transition: none; }
+}
+
+/* Замість іконки папки: літера-ініціал лише у згорнутій панелі. */
+.space-initial { display: none; font-weight: 600; font-size: 14px; color: var(--heading); line-height: 1; }
+.rail-collapsed .space-initial { display: block; }

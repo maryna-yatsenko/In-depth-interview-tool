@@ -102,7 +102,13 @@
       var li = document.createElement("li");
       var button = document.createElement("button");
       button.className = state.space === space.key ? "active" : "";
-      button.innerHTML = ICONS.folder;
+      // Іконки папки немає: вона нічого не робила. У згорнутій панелі замість неї
+      // видно першу літеру назви (у розгорнутій ця літера схована).
+      var initial = document.createElement("span");
+      initial.className = "space-initial";
+      initial.setAttribute("aria-hidden", "true");
+      initial.textContent = (space.title || space.key || "?").trim().charAt(0).toUpperCase();
+      button.appendChild(initial);
 
       var draftTag = null;
       var text = document.createElement("span");
@@ -236,6 +242,38 @@
      (одразу після того, як відпустили), тож однаковий для всіх, хто відкриє панель. */
   var spaceDrag = null;
 
+  /* Плавне переставляння (FLIP): запамʼятовуємо, де елементи були, міняємо
+     порядок у DOM і запускаємо кожному зсув із старого місця на нове —
+     картки ковзають, а не стрибають. Якщо елемент іще їхав, нова анімація
+     стартує з того місця, де він зараз, тож рух не рветься. Перетягуваний
+     елемент «у руці» не анімуємо. */
+  var lastFlipAt = 0;
+  function flipMove(root, selector, mutate) {
+    var items = Array.prototype.slice.call(root.querySelectorAll(selector));
+    var before = items.map(function (node) { return node.getBoundingClientRect(); });
+    mutate();
+    lastFlipAt = Date.now();
+    var calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    items.forEach(function (node) {
+      if (node.getAnimations) node.getAnimations().forEach(function (a) { a.cancel(); });
+    });
+    if (calm) return;
+    items.forEach(function (node, index) {
+      if (node.classList.contains("dragging") || !node.animate) return;
+      var after = node.getBoundingClientRect();
+      var dx = before[index].left - after.left;
+      var dy = before[index].top - after.top;
+      if (!dx && !dy) return;
+      node.animate(
+        [{ transform: "translate(" + dx + "px," + dy + "px)" }, { transform: "translate(0,0)" }],
+        { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" });
+    });
+  }
+
+  // Після зміни місця дрібна пауза: елементи ще їдуть під курсором, і без неї
+  // вони б «смикались» туди-сюди, реагуючи на власний рух.
+  function flipReady() { return Date.now() - lastFlipAt > 120; }
+
   function wireSpaceDrag(li) {
     li.addEventListener("dragstart", function (event) {
       spaceDrag = li;
@@ -251,9 +289,13 @@
     li.addEventListener("dragover", function (event) {
       if (!spaceDrag || spaceDrag === li) return;
       event.preventDefault();
+      if (!flipReady()) return;
       var rect = li.getBoundingClientRect();
       var before = (event.clientY - rect.top) < rect.height / 2;
-      li.parentNode.insertBefore(spaceDrag, before ? li : li.nextSibling);
+      var ref = before ? li : li.nextSibling;
+      if (ref === spaceDrag || ref === spaceDrag.nextSibling) return;
+      var dragged = spaceDrag;
+      flipMove(li.parentNode, "li.space-item", function () { li.parentNode.insertBefore(dragged, ref); });
     });
   }
 
@@ -379,9 +421,12 @@
       var dragging = list && list.querySelector(".must-learn-item.dragging");
       if (!dragging || dragging === row) return;
       e.preventDefault();
+      if (!flipReady()) return;
       var rect = row.getBoundingClientRect();
       var before = (e.clientY - rect.top) < rect.height / 2;
-      list.insertBefore(dragging, before ? row : row.nextSibling);
+      var ref = before ? row : row.nextSibling;
+      if (ref === dragging || ref === dragging.nextSibling) return;
+      flipMove(list, ".must-learn-item", function () { list.insertBefore(dragging, ref); });
     });
   }
 
@@ -676,18 +721,30 @@
       if (!overBlock) return;
       if (dragging.classList.contains("reorder-row")) {
         var overRow = e.target.closest(".reorder-row");
+        if (!flipReady()) return;
         if (overRow && overRow !== dragging) {
           var rect = overRow.getBoundingClientRect();
           var before = (e.clientY - rect.top) < rect.height / 2;
-          overRow.parentNode.insertBefore(dragging, before ? overRow : overRow.nextSibling);
+          var rowRef = before ? overRow : overRow.nextSibling;
+          if (rowRef === dragging || rowRef === dragging.nextSibling) return;
+          flipMove(list, ".reorder-row, .reorder-block", function () {
+            overRow.parentNode.insertBefore(dragging, rowRef);
+          });
         } else if (!overRow && overBlock !== dragging.closest(".reorder-block")) {
           // Над шапкою чи порожнім місцем іншого блоку — питання лягає в його кінець.
-          overBlock.querySelector(".reorder-block-body").appendChild(dragging);
+          flipMove(list, ".reorder-row, .reorder-block", function () {
+            overBlock.querySelector(".reorder-block-body").appendChild(dragging);
+          });
         }
       } else if (overBlock !== dragging && e.target.closest(".reorder-block-head")) {
+        if (!flipReady()) return;
         var headRect = e.target.closest(".reorder-block-head").getBoundingClientRect();
         var above = (e.clientY - headRect.top) < headRect.height / 2;
-        list.insertBefore(dragging, above ? overBlock : overBlock.nextSibling);
+        var blockRef = above ? overBlock : overBlock.nextSibling;
+        if (blockRef === dragging || blockRef === dragging.nextSibling) return;
+        flipMove(list, ".reorder-row, .reorder-block", function () {
+          list.insertBefore(dragging, blockRef);
+        });
       }
     });
   })();
