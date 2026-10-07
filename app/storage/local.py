@@ -263,6 +263,27 @@ def load_feedback(session_id: str) -> Optional[Dict[str, Any]]:
 
 # ── видалення (адмінка: дослідник видаляє інтервʼю разом із даними) ───────
 
+def delete_session(session_id: str) -> bool:
+    """Видаляє одну сесію (завершену й незавершену) разом із голосовими
+    записами та відгуком. True — якщо щось було видалено."""
+    if _on_postgres():
+        return _db.delete_session(session_id)
+    sid = _safe_id(session_id)
+    removed = False
+    for sub in ("sessions", "live"):
+        path = os.path.join(_dir(None, sub), "%s.json" % sid)
+        if os.path.isfile(path):
+            os.remove(path)
+            removed = True
+    directory = _voice.session_dir(sid)
+    if os.path.isdir(directory):
+        shutil.rmtree(directory, ignore_errors=True)
+    feedback_path = os.path.join(FEEDBACK_DIR, "%s.json" % sid)
+    if os.path.isfile(feedback_path):
+        os.remove(feedback_path)
+    return removed
+
+
 def delete_sessions_for_space(space_key: str) -> int:
     """Прибирає завершені й незавершені сесії цього простору разом із
     голосовими записами. Повертає кількість видалених завершених сесій —

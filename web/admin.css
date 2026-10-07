@@ -1921,3 +1921,7 @@ body.admin .topic-audio-delete:hover {
   color: var(--danger); border-color: var(--danger); background: transparent;
 }
 body.admin .topic-audio-delete .icon { color: inherit; }
+
+/* Видалення результатів: нейтральні в спокої, червоні лише на ховері — деструктивна дія. */
+body.admin #btn-delete-runs:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+.run-actions .run-delete { align-self: auto; height: 40px; }

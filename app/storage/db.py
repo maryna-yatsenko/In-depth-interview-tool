@@ -446,6 +446,22 @@ def delete_config_overrides(space_key: str) -> None:
 
 # ── видалення зібраних даних ─────────────────────────────────────────────
 
+def delete_session(session_id: str) -> bool:
+    """Видаляє одну сесію (завершену й незавершену) разом із голосовими
+    записами та відгуком. True — якщо завершену сесію було видалено."""
+    sid = _safe_id(session_id)
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM voice_clips WHERE session_id = %s", (sid,))
+            cur.execute("DELETE FROM feedback WHERE session_id = %s", (sid,))
+            cur.execute("DELETE FROM live_sessions WHERE id = %s", (sid,))
+            cur.execute("DELETE FROM finished_sessions WHERE id = %s", (sid,))
+            removed = cur.rowcount > 0
+        conn.commit()
+    return removed
+
+
 def delete_sessions_for_space(space_key: str) -> int:
     """Видаляє завершені й незавершені сесії цього простору разом із
     голосовими записами. Повертає кількість видалених завершених сесій —

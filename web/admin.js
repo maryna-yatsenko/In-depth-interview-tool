@@ -1511,6 +1511,7 @@
       var items = state.runs || [];
 
       el("runs-count").textContent = items.length ? items.length : "";
+      el("btn-delete-runs").classList.toggle("hidden", !items.length);
 
       if (!items.length) {
         host.innerHTML = "<p class='list-empty muted'>Завершених інтервʼю тут ще немає.</p>";
@@ -1592,9 +1593,36 @@
         open.addEventListener("click", function () { showTranscript(item.session_id); });
         actions.appendChild(open);
 
+        var del = document.createElement("button");
+        del.className = "icon-btn run-delete";
+        del.type = "button";
+        del.title = "Видалити результат";
+        del.setAttribute("aria-label", "Видалити результат");
+        del.innerHTML = ICONS.trash;
+        del.addEventListener("click", function () {
+          deleteResults([item], "Видалити результат?",
+            "Інтервʼю респондента «" + (item.respondent_name || "Без ПІБ") + "» (" +
+            formatDateTime(item.started_at) + ") буде видалено разом із записами голосу й відгуком. Це не можна скасувати.");
+        });
+        actions.appendChild(del);
+
         row.appendChild(actions);
         host.appendChild(row);
       });
+  }
+
+  /* Видалення результатів: одне інтервʼю з рядка або всі одразу з нижньої панелі. */
+  function deleteResults(items, title, text) {
+    confirmAction({ title: title, text: text, confirmLabel: "Видалити" }).then(function (ok) {
+      if (!ok) return null;
+      return post("/api/admin/results/delete", {
+        space: state.space,
+        ids: items.map(function (it) { return it.session_id; })
+      }).then(function (result) {
+        flash(result.removed === 1 ? "Результат видалено" : "Видалено результатів: " + result.removed, "ok");
+        loadRuns();
+      }).catch(function (err) { flash(err.message, "bad"); });
+    });
   }
 
   /* Кожен вид інциденту має власні поля. Раніше рендерер чекав `problems` у
@@ -2608,6 +2636,13 @@
   el("btn-transcript-close").addEventListener("click", closeTranscript);
   el("btn-transcript-x").addEventListener("click", closeTranscript);
   el("btn-export-runs").addEventListener("click", exportAllRuns);
+  el("btn-delete-runs").addEventListener("click", function () {
+    var items = state.runs || [];
+    if (!items.length) return;
+    deleteResults(items, "Видалити всі результати?",
+      "Усі інтервʼю респондентів цього дослідження (" + items.length +
+      ") буде видалено разом із записами голосу й відгуками. Це не можна скасувати.");
+  });
   el("transcript-modal").addEventListener("click", function (event) {
     if (event.target.id === "transcript-modal") closeTranscript();
   });

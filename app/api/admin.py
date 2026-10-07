@@ -713,6 +713,26 @@ def purge_space(root: str, space_key: str, delete_sessions: bool = False) -> Dic
     return {"ok": True, "key": key, "removed_sessions": removed_sessions}
 
 
+def delete_results(space_key: str, session_ids: Any) -> Dict[str, Any]:
+    """Видаляє обрані інтервʼю респондентів цього дослідження. Чужі
+    (з іншого простору) й невідомі ідентифікатори пропускаються мовчки —
+    не можна стерти результати іншого дослідження через підміну id."""
+    key = _check_key(space_key, "інтервʼю")
+    if not isinstance(session_ids, list) or not session_ids:
+        raise AdminError("Не вказано, що видаляти", 400)
+    removed = 0
+    for raw in session_ids:
+        try:
+            data = store_files.load_session_by_id(str(raw))
+        except ValueError:
+            continue
+        if not data or data.get("space") != key:
+            continue
+        if store_files.delete_session(str(raw)):
+            removed += 1
+    return {"ok": True, "removed": removed}
+
+
 # ── маршрутизація ────────────────────────────────────────────────────────
 
 def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any],
@@ -750,6 +770,8 @@ def handle(method: str, path: str, query: Dict[str, str], payload: Dict[str, Any
         if path == "/api/admin/trash/purge":
             return 200, purge_space(root, payload.get("space", ""),
                                     bool(payload.get("delete_sessions")))
+        if path == "/api/admin/results/delete":
+            return 200, delete_results(payload.get("space", ""), payload.get("ids"))
         if path == "/api/admin/topic-audio/delete":
             return 200, delete_topic_audio(root, payload.get("space", ""),
                                            payload.get("guide", ""), payload.get("topic", ""))

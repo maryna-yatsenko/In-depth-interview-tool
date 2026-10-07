@@ -364,5 +364,38 @@ class TestTranscriptIncludesFeedback(unittest.TestCase):
         self.assertIsNone(data["feedback"])
 
 
+class TestDeleteResults(unittest.TestCase):
+    def setUp(self):
+        from app.storage import local as store_files
+        self.store_files = store_files
+        self._orig_dirs = (store_files.DEFAULT_DIR, store_files.FEEDBACK_DIR)
+        self.root = tempfile.mkdtemp()
+        store_files.DEFAULT_DIR = os.path.join(self.root, "sessions")
+        store_files.FEEDBACK_DIR = os.path.join(self.root, "feedback")
+        store_files.save_session({"session_id": "aaa111", "space": "one", "turns": []})
+        store_files.save_session({"session_id": "bbb222", "space": "two", "turns": []})
+        store_files.save_feedback("aaa111", {"rating": 4})
+
+    def tearDown(self):
+        self.store_files.DEFAULT_DIR, self.store_files.FEEDBACK_DIR = self._orig_dirs
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_removes_own_session_and_feedback(self):
+        result = admin_api.delete_results("one", ["aaa111"])
+        self.assertEqual(result["removed"], 1)
+        self.assertIsNone(self.store_files.load_session_by_id("aaa111"))
+        self.assertIsNone(self.store_files.load_feedback("aaa111"))
+
+    def test_does_not_touch_other_spaces(self):
+        result = admin_api.delete_results("one", ["bbb222"])
+        self.assertEqual(result["removed"], 0)
+        self.assertIsNotNone(self.store_files.load_session_by_id("bbb222"))
+
+    def test_rejects_empty_and_bad_ids(self):
+        with self.assertRaises(admin_api.AdminError):
+            admin_api.delete_results("one", [])
+        self.assertEqual(admin_api.delete_results("one", ["../x"])["removed"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
