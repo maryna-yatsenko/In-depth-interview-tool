@@ -1123,10 +1123,20 @@
 
   /* ── простір ───────────────────────────────────────────────────────── */
 
+  // Той самий текст, що DEFAULT_CONSENT_TEXT у app/config/space.py.
+  var DEFAULT_CONSENT_TEXT =
+    "Це автоматичне інтервʼю про ваш особистий досвід. Розповідайте якомога детальніше: " +
+    "нам важливо зрозуміти, як усе відбувалося насправді.\n\n" +
+    "Ви відповідатимете голосом, а система записуватиме та розшифровуватиме ваші відповіді. " +
+    "Інтервʼю триватиме приблизно 30–50 хвилин.";
+
   function loadSpaceData() {
     api("/api/admin/space?space=" + encodeURIComponent(state.space)).then(function (data) {
       state.spaceData = data;
       el("space-title").value = data.title || "";
+      // Порожній текст і заготовка «TODO…» показуються стандартним текстом — таким його й побачить респондент.
+      var consent = String((data.privacy || {}).consent_text || "").trim();
+      el("space-consent").value = (!consent || /^TODO/i.test(consent)) ? DEFAULT_CONSENT_TEXT : consent;
       el("space-languages").value = (data.languages || []).join(", ");
       languageChips.refresh();
       renderStatusChip(data.draft);
@@ -1142,9 +1152,9 @@
       title: el("space-title").value.trim(),
       languages: el("space-languages").value.split(",").map(function (s) { return s.trim(); })
         .filter(function (s) { return s.length; }),
-      // persona.self_intro і privacy (deidentify/consent_text/patterns) тут
-      // не редагуються — адмінка їх більше не показує, тож просто йдуть з
-      // base незміненими.
+      // persona.self_intro і privacy.deidentify/patterns тут не редагуються —
+      // йдуть з base незміненими; з privacy міняється лише текст першої сторінки.
+      privacy: Object.assign({}, base.privacy || {}, { consent_text: el("space-consent").value.trim() }),
       // Готовність перемикається чіпом у шапці (renderStatusChip), а не
       // окремим полем тут — base.draft уже містить актуальне значення.
       draft: !!base.draft,
