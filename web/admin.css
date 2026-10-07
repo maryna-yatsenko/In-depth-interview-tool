@@ -1914,3 +1914,10 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
 /* Прапорець у налаштуваннях: звичайний рядок «галочка + підпис», а не поле на всю ширину. */
 .check-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 14px; color: var(--text); cursor: pointer; }
 .check-row input[type="checkbox"] { width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; flex: none; }
+
+/* «Прибрати запис» (кошик біля аудіоплеєра питання): на наведенні червоніє разом з іконкою,
+   як усі інші застережні кнопки — власний :hover вище перебивався загальним .ghost:hover. */
+body.admin .topic-audio-delete:hover {
+  color: var(--danger); border-color: var(--danger); background: transparent;
+}
+body.admin .topic-audio-delete .icon { color: inherit; }
