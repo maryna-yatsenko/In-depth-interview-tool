@@ -736,27 +736,19 @@ textarea:focus {
   background: linear-gradient(180deg, #9b80f5 0%, #6741d9 70%);
   border-color: #6741d9; color: #fff;
 }
-/* Природніше: ніби дихання. Кнопка ледь помітно «вдихає» (масштаб і яскравість), а від неї
-   одна за одною відходять м'які розмиті хвилі — вони плавно проявляються, ростуть із уповільненням
-   і розчиняються без жодного різкого краю. */
-.talk[aria-pressed="true"] { animation: talk-breathe 3s ease-in-out infinite; }
+/* Класична хвиля запису: від кнопки рівномірно в усі боки розходиться напівпрозоре фіолетове кільце-заливка
+   (товщина однакова скрізь, бо росте box-shadow, а не масштаб), м'якшає й розчиняється; друга хвиля —
+   із затримкою в півперіоду, тож рух безперервний. Сама кнопка не рухається. */
 .talk[aria-pressed="true"]::before, .talk[aria-pressed="true"]::after {
-  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 999px; pointer-events: none;
-  background: rgba(138, 108, 242, .6);
-  filter: blur(9px); opacity: 0;
-  animation: talk-ripple 3s cubic-bezier(.2, .6, .3, 1) infinite;
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  animation: talk-ripple 2.6s cubic-bezier(.25, .55, .35, 1) infinite;
 }
-.talk[aria-pressed="true"]::after { animation-delay: 1.5s; }
-@keyframes talk-breathe {
-  0%, 100% { transform: scale(1); filter: brightness(1); }
-  50% { transform: scale(1.025); filter: brightness(1.1); }
-}
+.talk[aria-pressed="true"]::after { animation-delay: 1.3s; }
 @keyframes talk-ripple {
-  0% { transform: scale(.95); opacity: 0; }
-  20% { opacity: .9; }
-  100% { transform: scale(1.3, 2.3); opacity: 0; }
+  0% { box-shadow: 0 0 0 0 rgba(138, 108, 242, .55), 0 0 8px 0 rgba(138, 108, 242, .35); }
+  100% { box-shadow: 0 0 0 20px rgba(138, 108, 242, 0), 0 0 18px 14px rgba(138, 108, 242, 0); }
 }
-@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"], .talk[aria-pressed="true"]::before, .talk[aria-pressed="true"]::after { animation: none; } .talk[aria-pressed="true"]::before, .talk[aria-pressed="true"]::after { display: none; } }
+@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"]::before, .talk[aria-pressed="true"]::after { animation: none; display: none; } }
 
 
 /* «Попереднє» й «Наступне» — по краях, не парою в центрі: це протилежні дії
