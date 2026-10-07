@@ -1869,37 +1869,46 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
 .import-result .import-dismiss .icon { color: inherit; }
 
 /* ── Тости ────────────────────────────────────────────────────────────────
-   Повідомлення про збереження й помилки: у правому нижньому куті, над нижньою
-   панеллю дій, зникають самі. */
+   За зразком Ark UI «toast promise»: картка з рамкою й великою тінню, кругла іконка
+   стану ліворуч, заголовок + опис, кнопка закриття вгорі справа. У правому нижньому
+   куті, над нижньою панеллю дій. */
 .toast-host {
   position: fixed; right: 24px; bottom: 96px; z-index: 80;
-  display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none;
+  display: flex; flex-direction: column; gap: 16px; align-items: flex-end; pointer-events: none;
 }
 .toast {
-  pointer-events: auto; display: flex; align-items: flex-start; gap: 12px;
-  width: max-content; max-width: min(420px, calc(100vw - 32px)); padding: 14px 14px 14px 16px;
+  pointer-events: auto; position: relative; display: flex; align-items: flex-start; gap: 12px;
+  min-width: 320px; max-width: min(420px, calc(100vw - 32px)); padding: 16px 44px 16px 16px;
   background: var(--surface); color: var(--text);
-  border: 1px solid var(--line); border-left: 4px solid var(--good); border-radius: 12px;
-  box-shadow: 0 16px 40px -12px rgba(20, 20, 20, .4), 0 2px 6px rgba(20, 20, 20, .08);
-  animation: toast-in .28s cubic-bezier(.2, .8, .2, 1);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, .18), 0 8px 10px -6px rgba(0, 0, 0, .12);
+  animation: toast-in .3s cubic-bezier(.2, .8, .2, 1);
+  transition: opacity .2s ease, transform .2s ease;
 }
-.toast.bad { border-left-color: var(--danger); }
-.toast.leaving { opacity: 0; transform: translateY(8px); transition: opacity .2s ease, transform .2s ease; }
-.toast-icon { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--good); }
-.toast.bad .toast-icon { color: var(--danger); }
-.toast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; line-height: 1.4; }
-.toast-text strong { font-weight: 600; }
-.toast-text span { color: var(--muted); font-size: 13px; }
+.toast.leaving { opacity: 0; transform: translateY(8px) scale(.98); }
+.toast-icon {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent-strong) 18%, var(--surface)); color: var(--accent-strong);
+}
+.toast.ok .toast-icon { background: color-mix(in srgb, var(--good) 18%, var(--surface)); color: var(--good); }
+.toast.bad .toast-icon { background: color-mix(in srgb, var(--danger) 16%, var(--surface)); color: var(--danger); }
+.toast-icon svg { width: 16px; height: 16px; }
+.toast-icon .spin { animation: toast-spin .9s linear infinite; }
+.toast-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; line-height: 1.4; }
+.toast-text strong { font-weight: 600; color: var(--text); }
+.toast-text span { margin-top: 4px; color: var(--muted); overflow-wrap: anywhere; }
 .toast-close {
-  flex: none; width: 24px; height: 24px; min-width: 24px; height: 24px; padding: 0; margin-left: 4px;
-  display: grid; place-items: center; background: transparent; border: none; border-radius: 6px;
-  color: var(--muted); cursor: pointer;
+  position: absolute; top: 16px; right: 16px; width: 20px; height: 20px; min-width: 20px; padding: 4px;
+  display: grid; place-items: center; background: transparent; border: none; border-radius: 999px;
+  color: var(--muted); cursor: pointer; transition: background .15s ease, color .15s ease;
 }
-.toast-close svg { width: 14px; height: 14px; }
+.toast-close svg { width: 12px; height: 12px; }
 .toast-close:hover { color: var(--text); background: var(--muted-tint); }
-@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
-@media (max-width: 520px) { .toast-host { right: 16px; left: 16px; bottom: 88px; align-items: stretch; } .toast { max-width: none; width: auto; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes toast-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } .toast-icon .spin { animation-duration: 2s; } }
+@media (max-width: 520px) { .toast-host { right: 16px; left: 16px; bottom: 88px; align-items: stretch; } .toast { min-width: 0; max-width: none; } }
 
 /* Прапорець у налаштуваннях: звичайний рядок «галочка + підпис», а не поле на всю ширину. */
 .check-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 14px; color: var(--text); cursor: pointer; }

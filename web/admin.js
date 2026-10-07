@@ -55,10 +55,18 @@
     });
   }
 
-  /* Тост: коротке повідомлення в куті екрана — що сталось (і, за потреби, деталі).
-     Зникає саме; помилки лишаються довше й читаються як «alert». */
+  /* Тост за зразком Ark UI «toast promise»: картка з круглою іконкою стану (завантаження /
+     успіх / помилка), заголовком і описом та кнопкою закриття вгорі справа. Тост у стані
+     «loading» не зникає, доки його не оновлять (handle.update) на успіх чи помилку —
+     так показується «Зберігаю… → Збережено». Решта зникає сама. */
+  var TOAST_ICONS = {
+    loading: '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>',
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+    bad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+  };
+
   function toast(title, kind, detail) {
-    if (!title) return;
+    if (!title) return { update: function () {}, dismiss: function () {} };
     var host = document.getElementById("toast-host");
     if (!host) {
       host = document.createElement("div");
@@ -66,41 +74,59 @@
       host.className = "toast-host";
       document.body.appendChild(host);
     }
-    var bad = kind === "bad";
     var node = document.createElement("div");
-    node.className = "toast " + (bad ? "bad" : "ok");
-    node.setAttribute("role", bad ? "alert" : "status");
-    node.innerHTML = bad
-      ? '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
-      : '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    var icon = document.createElement("div");
+    icon.className = "toast-icon";
     var text = document.createElement("div");
     text.className = "toast-text";
-    var strong = document.createElement("strong");
-    strong.textContent = title;
-    text.appendChild(strong);
-    if (detail) {
-      var small = document.createElement("span");
-      small.textContent = detail;
-      text.appendChild(small);
-    }
-    node.appendChild(text);
     var close = document.createElement("button");
     close.type = "button";
     close.className = "toast-close";
     close.setAttribute("aria-label", "Закрити");
-    close.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    close.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    node.appendChild(icon);
+    node.appendChild(text);
+    node.appendChild(close);
+
+    var timer = null;
     function dismiss() {
+      clearTimeout(timer);
       if (!node.parentNode) return;
       node.classList.add("leaving");
       setTimeout(function () { if (node.parentNode) node.remove(); }, 220);
     }
+    function render(nextKind, nextTitle, nextDetail) {
+      var state = nextKind === "bad" ? "bad" : (nextKind === "loading" ? "loading" : "ok");
+      node.className = "toast " + state;
+      node.setAttribute("role", state === "bad" ? "alert" : "status");
+      icon.innerHTML = TOAST_ICONS[state];
+      text.innerHTML = "";
+      var strong = document.createElement("strong");
+      strong.textContent = nextTitle;
+      text.appendChild(strong);
+      if (nextDetail) {
+        var small = document.createElement("span");
+        small.textContent = nextDetail;
+        text.appendChild(small);
+      }
+      clearTimeout(timer);
+      // Завантаження висить, доки його не оновлять; успіх — 5 с; помилка читається довше.
+      if (state !== "loading") timer = setTimeout(dismiss, state === "bad" ? 7000 : 5000);
+    }
     close.addEventListener("click", dismiss);
-    node.appendChild(close);
+    render(kind, title, detail);
     host.appendChild(node);
-    setTimeout(dismiss, bad ? 7000 : 4500);
+    return {
+      update: function (nextKind, nextTitle, nextDetail) {
+        if (!node.parentNode) return;
+        node.classList.remove("leaving");
+        render(nextKind, nextTitle, nextDetail);
+      },
+      dismiss: dismiss
+    };
   }
 
-  function flash(message, kind, detail) { toast(message, kind, detail); }
+  function flash(message, kind, detail) { return toast(message, kind, detail); }
 
   // «26 питань у 6 блоках» — підсумок гайда для тосту про збереження.
   function guideSummary(topics) {
@@ -1166,9 +1192,10 @@
     delete payload.deepening;
     delete payload.generalization_markers;
     el("guide-error").textContent = "";
+    var pending = quiet ? null : toast("Зберігаю гайд…", "loading", "Зачекайте, зберігаю зміни.");
     return post("/api/admin/guide", { space: state.space, guide: state.guide, data: payload })
       .then(function () {
-        if (!quiet) flash("Гайд збережено", "ok", guideSummary(payload.topics));
+        if (pending) pending.update("ok", "Гайд збережено", guideSummary(payload.topics));
         state.guideData = payload;
         // Перемальовуємо картки: нові питання отримали справжній id щойно
         // зараз — доти запис голосу для них був недоступний.
@@ -1176,7 +1203,7 @@
       })
       .catch(function (err) {
         el("guide-error").textContent = err.message;
-        flash("Не збережено", "bad");
+        if (pending) pending.update("bad", "Не збережено", err.message);
         throw err;
       });
   }
@@ -1248,6 +1275,7 @@
       branding: Object.assign({}, base.branding || {})
     });
     el("space-error").textContent = "";
+    var pending = toast("Зберігаю…", "loading", "Зачекайте, зберігаю зміни.");
     post("/api/admin/space", { space: state.space, data: payload })
       .then(function () {
         state.spaceData = payload;
@@ -1257,14 +1285,14 @@
       })
       .then(function () {
         var title = (state.spaceData && state.spaceData.title) || state.space;
-        flash("Збережено", "ok", state.guideData
+        pending.update("ok", "Збережено", state.guideData
           ? "«" + title + "»: налаштування й гайд — " + guideSummary(state.guideData.topics)
           : "«" + title + "»: налаштування");
         return refresh();
       })
       .catch(function (err) {
         el("space-error").textContent = err.message;
-        flash("Не збережено", "bad");
+        pending.update("bad", "Не збережено", err.message);
       });
   }
 
