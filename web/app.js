@@ -1070,7 +1070,9 @@
     // Довгий список — у дві колонки. Під час вільної розповіді чекліст — це
     // мапа всіх десяти тем; одним стовпцем вона займала більше екрана, ніж
     // саме питання.
-    list.classList.toggle("two-cols", items.length > 6);
+    // Від чотирьох пунктів — дві колонки, порівну (1–2 ліворуч, 3–4 праворуч тощо).
+    list.classList.toggle("two-cols", items.length >= 4);
+    list.style.setProperty("--rows", Math.ceil(items.length / 2));
     box.classList.remove("hidden");
     setChecklistCollapsed(!!state.checklistCollapsed);
     state.checklistItems = items;
@@ -1220,7 +1222,8 @@
     state.speaking = !!speaking;
     el("audio-bar").classList.toggle("hidden", !available);
     if (!available) return;
-    el("audio-dot").classList.toggle("hidden", !speaking);
+    // Під час читання — лише кнопка «Зупинити»: ні крапки, ні підпису «Читаю питання…».
+    el("audio-dot").classList.add("hidden");
     el("btn-listen").classList.toggle("hidden", !!speaking);
     el("btn-stop-speak").classList.toggle("hidden", !speaking);
     // Без "Питання можна прослухати" в стані спокою: кнопка поруч і так
@@ -1228,8 +1231,8 @@
     // це стан, а не пояснення очевидного. Приховуємо порожній підпис (не
     // лише textContent = "") — інакше він, навіть порожній, лишається
     // окремим елементом рядка й gap між елементами відсуває кнопку праворуч.
-    el("audio-text").classList.toggle("hidden", !speaking);
-    el("audio-text").textContent = speaking ? "Читаю питання…" : "";
+    el("audio-text").classList.add("hidden");
+    el("audio-text").textContent = "";
   }
 
   function setSpeakingUI(speaking) {

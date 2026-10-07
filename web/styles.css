@@ -874,10 +874,16 @@ textarea:focus {
 .checklist ul { list-style: decimal; margin: 0; padding: 0 0 0 20px; }
 /* Дві колонки для довгого списку — інакше мапа з десяти тем під час вільної
    розповіді займає більше висоти, ніж саме питання. */
-.checklist ul.two-cols { columns: 2; column-gap: 24px; }
-.checklist ul.two-cols li { break-inside: avoid; }
+/* Дві колонки порівну (потік по колонках: 1–2 ліворуч, 3–4 праворуч): число рядків задає app.js
+   через --rows. Не CSS columns — з маркерами всередині вони накладали рядки один на одного. */
+.checklist ul.two-cols {
+  display: grid; grid-auto-flow: column;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rows, 2), auto);
+  column-gap: 32px;
+}
 @media (max-width: 560px) {
-  .checklist ul.two-cols { columns: 1; }
+  .checklist ul.two-cols { display: block; }
 }
 .checklist li {
   color: var(--muted); line-height: 1.35; padding: 2px 0;
@@ -1359,3 +1365,14 @@ html[data-canvas-hold="drum"] .confetti { display: none; }
   100% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent-strong) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"] { animation: none; } }
+
+/* Підпис обсягу відповіді — жовто-оранжевий замість червонуватого: «ще можна розкрити» — це не
+   помилка. Тон темний (світла тема) чи світлий (темна) — контраст на тлі картки понад 4.5:1. */
+:root { --amber: #f59e0b; --amber-text: #b45309; }
+@media (prefers-color-scheme: dark) { :root { --amber: #fbbf24; --amber-text: #fcd34d; } }
+:root[data-theme="dark"] { --amber: #fbbf24; --amber-text: #fcd34d; }
+:root[data-theme="light"] { --amber: #f59e0b; --amber-text: #b45309; }
+.word-track > i { background: var(--amber); }
+.word-progress.met .word-track > i { background: var(--good); }
+.word-detail { color: var(--amber-text); }
+.word-progress.met .word-detail { color: var(--good-strong); }
