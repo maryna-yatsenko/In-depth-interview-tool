@@ -1842,11 +1842,6 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
    Імпорт — тонований блок з акцентною рамкою («звідки беремо»); гайд — звичайні
    білі картки під окремим заголовком із лінією («що піде в інтервʼю»). */
 .import-section { margin-bottom: 40px; }
-.section-eyebrow {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 12px;
-  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--heading);
-}
-.section-eyebrow .icon { width: 16px; height: 16px; order: 0; }
 .import-section .import-box { margin-bottom: 0; }
 /* Один блок, не блок у блоці: лавандові кольори розділу несе сама пунктирна зона. */
 .import-section .import-drop {
