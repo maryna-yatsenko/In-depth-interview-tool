@@ -55,11 +55,65 @@
     });
   }
 
-  function flash(message, kind) {
-    var node = el("save-flash");
-    node.textContent = message;
-    node.className = "flash " + (kind || "");
-    if (message) setTimeout(function () { node.textContent = ""; node.className = "flash"; }, 4000);
+  /* Тост: коротке повідомлення в куті екрана — що сталось (і, за потреби, деталі).
+     Зникає саме; помилки лишаються довше й читаються як «alert». */
+  function toast(title, kind, detail) {
+    if (!title) return;
+    var host = document.getElementById("toast-host");
+    if (!host) {
+      host = document.createElement("div");
+      host.id = "toast-host";
+      host.className = "toast-host";
+      document.body.appendChild(host);
+    }
+    var bad = kind === "bad";
+    var node = document.createElement("div");
+    node.className = "toast " + (bad ? "bad" : "ok");
+    node.setAttribute("role", bad ? "alert" : "status");
+    node.innerHTML = bad
+      ? '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+      : '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    var text = document.createElement("div");
+    text.className = "toast-text";
+    var strong = document.createElement("strong");
+    strong.textContent = title;
+    text.appendChild(strong);
+    if (detail) {
+      var small = document.createElement("span");
+      small.textContent = detail;
+      text.appendChild(small);
+    }
+    node.appendChild(text);
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "toast-close";
+    close.setAttribute("aria-label", "Закрити");
+    close.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    function dismiss() {
+      if (!node.parentNode) return;
+      node.classList.add("leaving");
+      setTimeout(function () { if (node.parentNode) node.remove(); }, 220);
+    }
+    close.addEventListener("click", dismiss);
+    node.appendChild(close);
+    host.appendChild(node);
+    setTimeout(dismiss, bad ? 7000 : 4500);
+  }
+
+  function flash(message, kind, detail) { toast(message, kind, detail); }
+
+  // «26 питань у 6 блоках» — підсумок гайда для тосту про збереження.
+  function guideSummary(topics) {
+    topics = topics || [];
+    var blocks = 0, previous = null;
+    topics.forEach(function (topic) {
+      var name = (topic.block || "").trim();
+      if (name && name !== previous) blocks++;
+      previous = name;
+    });
+    var text = topics.length + " " + pluralQuestions(topics.length);
+    if (blocks) text += blocks === 1 ? " в 1 блоці" : " у " + blocks + " блоках";
+    return text;
   }
 
   /* Посилання на форму респондента — з ?space=<key> поточного дослідження:
@@ -1114,7 +1168,7 @@
     el("guide-error").textContent = "";
     return post("/api/admin/guide", { space: state.space, guide: state.guide, data: payload })
       .then(function () {
-        if (!quiet) flash("Гайд збережено", "ok");
+        if (!quiet) flash("Гайд збережено", "ok", guideSummary(payload.topics));
         state.guideData = payload;
         // Перемальовуємо картки: нові питання отримали справжній id щойно
         // зараз — доти запис голосу для них був недоступний.
@@ -1200,7 +1254,10 @@
         return state.guide ? saveGuide({ quiet: true }) : null;
       })
       .then(function () {
-        flash("Збережено", "ok");
+        var title = (state.spaceData && state.spaceData.title) || state.space;
+        flash("Збережено", "ok", state.guideData
+          ? "«" + title + "»: налаштування й гайд — " + guideSummary(state.guideData.topics)
+          : "«" + title + "»: налаштування");
         return refresh();
       })
       .catch(function (err) {

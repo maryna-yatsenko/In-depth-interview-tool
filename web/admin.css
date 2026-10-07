@@ -1862,3 +1862,36 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
 /* Кошик у рядку документа: іконка змінює колір разом із кнопкою (червоніє на ховері),
    а не тримає власний сірий із .import-result .icon. */
 .import-result .import-dismiss .icon { color: inherit; }
+
+/* ── Тости ────────────────────────────────────────────────────────────────
+   Повідомлення про збереження й помилки: у правому нижньому куті, над нижньою
+   панеллю дій, зникають самі. */
+.toast-host {
+  position: fixed; right: 24px; bottom: 96px; z-index: 80;
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-end; pointer-events: none;
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: 12px;
+  width: max-content; max-width: min(420px, calc(100vw - 32px)); padding: 14px 14px 14px 16px;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-left: 4px solid var(--good); border-radius: 12px;
+  box-shadow: 0 16px 40px -12px rgba(20, 20, 20, .4), 0 2px 6px rgba(20, 20, 20, .08);
+  animation: toast-in .28s cubic-bezier(.2, .8, .2, 1);
+}
+.toast.bad { border-left-color: var(--danger); }
+.toast.leaving { opacity: 0; transform: translateY(8px); transition: opacity .2s ease, transform .2s ease; }
+.toast-icon { flex: none; width: 20px; height: 20px; margin-top: 1px; color: var(--good); }
+.toast.bad .toast-icon { color: var(--danger); }
+.toast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 14px; line-height: 1.4; }
+.toast-text strong { font-weight: 600; }
+.toast-text span { color: var(--muted); font-size: 13px; }
+.toast-close {
+  flex: none; width: 24px; height: 24px; min-width: 24px; height: 24px; padding: 0; margin-left: 4px;
+  display: grid; place-items: center; background: transparent; border: none; border-radius: 6px;
+  color: var(--muted); cursor: pointer;
+}
+.toast-close svg { width: 14px; height: 14px; }
+.toast-close:hover { color: var(--text); background: var(--muted-tint); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+@media (max-width: 520px) { .toast-host { right: 16px; left: 16px; bottom: 88px; align-items: stretch; } .toast { max-width: none; width: auto; } }
