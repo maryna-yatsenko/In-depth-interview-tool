@@ -1091,6 +1091,10 @@
     if (typeof progress.at_end === "boolean") state.atEnd = progress.at_end;
     if (typeof progress.answered === "boolean") state.answered = progress.answered;
     state.scripted = !!progress.scripted;
+    // Вітання-вступ: відповідати нічого, лише «Далі» (решта керування відповіддю ховається).
+    state.intro = !!progress.intro;
+    var voiceArea = el("voice-area");
+    if (voiceArea) voiceArea.classList.toggle("intro", state.intro);
     state.depth = progress.depth || null;
     // Останнє питання: кнопка каже, що буде далі, — інакше людина не знає, що
     // натискає завершення розмови.
@@ -1762,6 +1766,7 @@
     if (state.atEnd) finishFlow(); else step(1);
   });
   el("btn-prev").addEventListener("click", function () { step(-1); });
+  el("btn-intro-next").addEventListener("click", function () { step(1); });
   el("btn-send-answer").addEventListener("click", submitAnswer);
   el("btn-voice-again").addEventListener("click", function () {
     // Стирається те, що ще не пішло. Надіслане вже в транскрипті — прибрати

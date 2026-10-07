@@ -483,6 +483,7 @@
       // Заготовка «TODO…» у «Вітанні» показується стандартним текстом, яким воно й буде.
       var greeting = String(data.opening || "");
       el("guide-opening").value = /^\s*TODO/i.test(greeting) ? DEFAULT_OPENING_TEXT : greeting;
+      el("guide-opening-intro").checked = !!data.opening_intro;
       el("guide-closing").value = /^\s*TODO/i.test(String(data.closing || "")) ? DEFAULT_CLOSING_TEXT : (data.closing || "");
       el("guide-max-turns").value = data.max_turns || 30;
       el("guide-feedback-prompt").value = data.feedback_prompt || "";
@@ -1179,6 +1180,7 @@
       key: state.guide,
       goal: el("guide-goal").value.trim(),
       opening: el("guide-opening").value.trim(),
+      opening_intro: el("guide-opening-intro").checked,
       closing: el("guide-closing").value.trim(),
       max_turns: parseInt(el("guide-max-turns").value, 10) || 30,
       feedback_prompt: el("guide-feedback-prompt").value.trim(),
@@ -2537,7 +2539,10 @@
           var blank = editorIsBlank();
           var added = appendImportedQuestions(questions, importSeq);
           var extras = [];
-          if (fillIfUntouched("guide-opening", "opening", parsed.opening, blank)) extras.push("привітання");
+          if (fillIfUntouched("guide-opening", "opening", parsed.opening, blank)) {
+            extras.push("привітання");
+            el("guide-opening-intro").checked = true;   // привітання з документа — лише вступ
+          }
           if (fillIfUntouched("guide-closing", "closing", parsed.closing, blank)) extras.push("прощання");
           var row = addImportedDoc(importSeq, file.name, questions.length, added.newBlocks, extras, parsed.skipped);
           improveImportedQuestions(added.cards, row);

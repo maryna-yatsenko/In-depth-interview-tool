@@ -185,6 +185,28 @@ class TestScriptedFlow(unittest.TestCase):
         info = session.progress_info()
         self.assertEqual([s["title"] for s in info["sections"] if s["current"]], ["Вибір"])
 
+    def test_intro_greeting_needs_no_answer(self):
+        """Вітання-вступ (`opening_intro`) не блокує перехід до питань і не лишається «без відповіді»."""
+        self.guide.opening_intro = True
+        session = Session(self.space, self.guide, Counting())
+        session.start()
+        info = session.progress_info()
+        self.assertTrue(info["intro"])
+        self.assertTrue(info["answered"])
+        session.go(1)
+        info = session.progress_info()
+        self.assertFalse(info["intro"])
+        self.assertFalse(info["answered"])  # питання після вступу відповіді потребує
+        opening = next(s for s in info["sections"] if s["phase"] == phases.WARMUP)
+        self.assertEqual(opening["answered"], opening["total"])
+
+    def test_opening_without_intro_flag_still_needs_answer(self):
+        self.guide.opening_intro = False
+        session = Session(self.space, self.guide, Counting())
+        session.start()
+        self.assertFalse(session.progress_info()["intro"])
+        self.assertFalse(session.answered_current())
+
     def test_depth_stats_count_distinct_questions(self):
         """Глибина рахує ПИТАННЯ, а не ходи: дві репліки на одне питання —
         це одна відповідальна одиниця, довша, не дві."""

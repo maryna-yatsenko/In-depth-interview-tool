@@ -158,6 +158,9 @@ class Guide:
     topics: List[Topic]
     max_turns: int = 40
     opening: str = ""
+    # Вітання — лише вступ, на нього не треба відповідати (тоді інтервʼю одразу йде до першого
+    # питання). За замовчуванням false: у старих гайдах «відкриття» — це перше справжнє питання.
+    opening_intro: bool = False
     closing: str = ""
     # Фаза вільної розповіді: інтервʼюер НЕ питає, а тільки тримає розмову
     # короткими репліками. У професійних гайдах це окрема частина на 20–25 хв,
@@ -370,6 +373,7 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
         topics=topics,
         max_turns=int(data.get("max_turns", 40)),
         opening=opening_or_default(data.get("opening", "")),
+        opening_intro=bool(data.get("opening_intro", False)),
         closing=DEFAULT_CLOSING_TEXT if str(data.get("closing", "")).strip().upper().startswith("TODO")
         else data.get("closing", ""),
         narrative_prompt=narrative.get("prompt", ""),

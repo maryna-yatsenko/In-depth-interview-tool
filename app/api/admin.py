@@ -603,6 +603,7 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
         guide.pop("_comment", None)
         guide["goal"] = "TODO: що саме треба зрозуміти"
         guide["opening"] = DEFAULT_OPENING_TEXT
+        guide["opening_intro"] = True
         guide["closing"] = DEFAULT_CLOSING_TEXT
         guide["topics"] = [{
             "id": "topic-1",
