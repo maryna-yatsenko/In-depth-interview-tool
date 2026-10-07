@@ -199,7 +199,15 @@
            бо це редагують частіше й незалежно від того, як налаштований
            простір. -->
       <section id="tab-questions" class="tab-panel hidden">
-        <!-- Імпорт списку питань: компактна зона для файлу. Питання потрапляють у
+        <!-- Два окремі розділи сторінки: «Імпорт з документа» (звідки беруться питання)
+             і «Питання гайда» (що саме ввійде в інтервʼю). Різний вигляд — щоб було
+             зрозуміло, що до чого належить. -->
+        <section class="import-section" aria-labelledby="import-section-title">
+          <h2 id="import-section-title" class="section-eyebrow">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+            Імпорт з документа
+          </h2>
+          <!-- Імпорт списку питань: компактна зона для файлу. Питання потрапляють у
              редактор як нові картки; у гайді вони з'являються після «Зберегти гайд». -->
         <div class="import-box">
           <label id="import-drop" class="import-drop" tabindex="0">
@@ -239,6 +247,13 @@
           <div id="import-docs" class="import-docs"></div>
           <p id="import-error" class="import-error"></p>
         </div>
+        </section>
+
+        <div class="guide-section-head">
+          <h2>Питання гайда</h2>
+          <p>Це побачить і почує респондент: привітання, питання за блоками, прощання.</p>
+        </div>
+
 
         <div id="questions-callout" class="callout">
           <button type="button" class="callout-close" id="btn-callout-close" aria-label="Закрити підказку">
