@@ -409,6 +409,20 @@ def list_config_override_paths(space_key: str) -> List[str]:
     return [row[0] for row in rows]
 
 
+def config_stamp(space_key: str):
+    """Відбиток конфігу простору в базі: щойно дослідник щось зберіг чи позначив
+    «Опубліковано», він змінюється — за ним респондентський сервер знає, що кеш застарів."""
+    ensure_schema()
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT path, updated_at FROM config_overrides WHERE space_key = %s ORDER BY path",
+                (space_key,),
+            )
+            rows = cur.fetchall()
+    return tuple((row[0], str(row[1])) for row in rows)
+
+
 def delete_config_override(space_key: str, path: str) -> None:
     ensure_schema()
     with _connect() as conn:

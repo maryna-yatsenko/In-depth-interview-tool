@@ -12,6 +12,7 @@ import json
 import os
 import posixpath
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
@@ -22,6 +23,8 @@ from ..config.space import Guide, SpaceConfig
 from ..interview.session import Session
 from ..providers.base import ProviderError
 from ..providers.registry import build_llm
+from ..config.resolve import resolve_space_dir
+from ..storage import db as store_db
 from ..storage import local as store_files
 from ..storage import voice as voice_files
 from . import admin as admin_api
@@ -130,6 +133,10 @@ class SessionStore:
         return path
 
 
+# Як часто звіряти конфіг простору з тим, що вже завантажено (секунди).
+ENTRY_RECHECK_SECONDS = 2.0
+
+
 class _SpaceEntry:
     """Один запис реєстру: простір + гайд + власна SessionStore/банк.
 
@@ -140,13 +147,17 @@ class _SpaceEntry:
     кожен простір: LLM-конфіг/провайдер і банк реплік можуть відрізнятись
     між просторами, а сесії однієї не мають змішуватись із сесіями іншої.
     """
-    __slots__ = ("space", "guide", "store", "bank_provider")
+    __slots__ = ("space", "guide", "store", "bank_provider", "signature", "checked_at")
 
     def __init__(self, space: SpaceConfig, guide: Guide, store: SessionStore, bank_provider):
         self.space = space
         self.guide = guide
         self.store = store
         self.bank_provider = bank_provider
+        # Відбиток файлів/рядків конфігу, з яких завантажено запис, і коли його востаннє
+        # звіряли: за ним запис перезавантажується, коли дослідник щось змінив у панелі.
+        self.signature = None
+        self.checked_at = 0.0
 
 
 def make_handler(
@@ -186,26 +197,80 @@ def make_handler(
             # Технічний лог без вмісту реплік — правило з architecture.md.
             print("[web] %s" % (fmt % args))
 
-        def _resolve_space(self, key: str) -> "_SpaceEntry":
-            key = (key or "").strip()
-            if not key or key == default_entry.space.key:
-                return default_entry
-            with registry_lock:
-                cached = registry.get(key)
-            if cached:
-                return cached
-            if not admin_root:
-                return default_entry
-            space_dir = os.path.join(admin_root, key)
-            if not os.path.isdir(space_dir):
-                return default_entry
+        def _signature(self, key: str):
+            """Відбиток конфігу простору: mtime+розмір файлів (локально) чи updated_at рядків у базі
+            (Vercel). None — не вдалося визначити (тоді запис не перезавантажуємо)."""
+            try:
+                if os.environ.get("STORAGE_BACKEND") == "postgres":
+                    return store_db.config_stamp(key)
+                base = os.path.join(admin_root, key)
+                rels = ["space.json"] + sorted(
+                    "guides/" + name for name in os.listdir(os.path.join(base, "guides"))
+                    if name.endswith(".json"))
+                parts = []
+                for rel in rels:
+                    stat = os.stat(os.path.join(base, rel))
+                    parts.append((rel, stat.st_mtime_ns, stat.st_size))
+                return tuple(parts)
+            except Exception:
+                return None
+
+        def _load_entry(self, key: str, previous: Optional["_SpaceEntry"]) -> Optional["_SpaceEntry"]:
+            if os.environ.get("STORAGE_BACKEND") == "postgres":
+                space_dir = resolve_space_dir(admin_root, key)
+                if not os.path.isdir(space_dir):
+                    return None
+            else:
+                space_dir = os.path.join(admin_root, key)
+                if not os.path.isdir(space_dir):
+                    return None
             try:
                 new_space, new_guide = space_module.load_space_dir(space_dir)
             except Exception:
-                return default_entry
+                return None
             new_bank_provider = lambda: load_bank(space_dir)
             new_store = SessionStore(new_space, new_guide, llm_cfg, new_bank_provider)
+            if previous is not None:
+                # Перезавантаження не мусить губити живі розмови й вантажити ще одну
+                # копію важкої моделі: сесії та спільна модель переходять у нове сховище.
+                new_store._items = previous.store._items
+                new_store._llm = previous.store._llm
             entry = _SpaceEntry(new_space, new_guide, new_store, new_bank_provider)
+            entry.signature = self._signature(key)
+            entry.checked_at = time.time()
+            return entry
+
+        def _resolve_space(self, key: str) -> "_SpaceEntry":
+            key = (key or "").strip() or default_entry.space.key
+            with registry_lock:
+                cached = registry.get(key)
+            if cached:
+                # Статус «Опубліковано», питання й налаштування, збережені в панелі, мають
+                # діяти на респондента одразу, а не після перезапуску сервера. Звіряємо відбиток
+                # раз на кілька секунд — дешево, але змін не пропускаємо.
+                if admin_root and time.time() - cached.checked_at > ENTRY_RECHECK_SECONDS:
+                    cached.checked_at = time.time()
+                    stamp = self._signature(key)
+                    if cached.signature is None:
+                        cached.signature = stamp
+                    elif stamp is not None and stamp != cached.signature:
+                        fresh = self._load_entry(key, cached)
+                        if fresh is not None:
+                            with registry_lock:
+                                registry[key] = fresh
+                            if key == default_entry.space.key:
+                                default_entry.space = fresh.space
+                                default_entry.guide = fresh.guide
+                                default_entry.store = fresh.store
+                                default_entry.bank_provider = fresh.bank_provider
+                            return fresh
+                        cached.signature = stamp
+                return cached
+            if not admin_root:
+                return default_entry
+            entry = self._load_entry(key, None)
+            if entry is None:
+                return default_entry
             with registry_lock:
                 entry = registry.setdefault(key, entry)
             return entry
