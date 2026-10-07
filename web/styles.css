@@ -724,27 +724,6 @@ textarea:focus {
     color-mix(in srgb, var(--accent-strong) 40%, var(--btn-fill)) 0%,
     var(--btn-fill) 70%);
 }
-/* Активний запис — теж фіолетовий, але іншого відтінку, ніж у спокої: світліший, «електричний»
-   фіолет (#8a6cf2 → #6741d9) замість темного #5a33b5, і м'яке пульсуюче кільце, що каже
-   «зараз слухаю». Не червоний: червоний у цьому інструменті — про видалення й небезпеку, а
-   не про те, що людина говорить. Фіксований, не завʼязаний на тему — як і решта градієнтів кнопок. */
-.talk[aria-pressed="true"] {
-  background: linear-gradient(180deg, #8a6cf2 0%, #6741d9 75%);
-  border-color: #6741d9; color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 1px rgba(20, 20, 20, .18), 0 8px 16px -8px rgba(20, 20, 20, .35);
-  animation: talk-ring 1.8s ease-out infinite;
-}
-/* Специфічність .talk:hover:not(:disabled) вища за .talk[aria-pressed] —
-   без окремого правила на ховері запис "згасав" би назад у спокійний фіолетовий. */
-.talk:hover[aria-pressed="true"]:not(:disabled) {
-  background: linear-gradient(180deg, #9b80f5 0%, #6741d9 70%);
-  border-color: #6741d9; color: #fff;
-}
-@keyframes talk-ring {
-  0% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px rgba(20, 20, 20, .35), 0 0 0 0 rgba(138, 108, 242, .55); }
-  100% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px rgba(20, 20, 20, .35), 0 0 0 12px rgba(138, 108, 242, 0); }
-}
-@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"] { animation: none; } }
 
 
 /* «Попереднє» й «Наступне» — по краях, не парою в центрі: це протилежні дії
@@ -869,7 +848,9 @@ textarea:focus {
    тонка риска знизу відділяє «про що сказати» від того, що вже сказано,
    і власний відступ картки (answer-block) замінює бічний padding. */
 /* Памʼятка стоїть ОКРЕМО під карткою відповіді, на тлі сторінки (без картки й розділювача). */
-.voice-area > .checklist { margin: 14px 0 32px; padding: 0 17px; }
+.voice-area > .checklist { margin: 14px 0 32px; padding: 0; }
+/* Підпис і пункти — рівно по лівому краю колонки (разом з текстом питання й кнопками), без відступу картки. */
+.voice-area > .checklist ul { padding-left: 0; list-style-position: inside; }
 /* Памʼятка під текстом відповіді згортається: заголовок — кнопка зі стрілкою. */
 .checklist-toggle {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -1349,3 +1330,32 @@ html[data-canvas-hold="drum"] .confetti { display: none; }
 @supports (-moz-appearance: none) {
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent; }
 }
+
+/* Кнопка «Говорити / Продовжити» — легка, а не важка: тонований фон і акцентна рамка замість
+   суцільного темного градієнта з великою тінню. Головною діє, але не «тисне». Під час запису
+   тон трохи насичується, а хвиля навколо — ледь помітна й повільна. */
+.talk {
+  background: color-mix(in srgb, var(--btn-fill) 22%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 55%, var(--line));
+  color: var(--accent);
+  box-shadow: none;
+}
+.talk:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--btn-fill) 32%, var(--surface));
+  border-color: var(--accent-strong);
+  transform: none;
+  box-shadow: none;
+}
+.talk[aria-pressed="true"],
+.talk:hover[aria-pressed="true"]:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-strong) 30%, var(--surface));
+  border-color: var(--accent-strong);
+  color: var(--accent);
+  box-shadow: none;
+  animation: talk-wave 2.6s ease-out infinite;
+}
+@keyframes talk-wave {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-strong) 28%, transparent); }
+  100% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent-strong) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"] { animation: none; } }
