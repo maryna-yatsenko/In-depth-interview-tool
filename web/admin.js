@@ -398,7 +398,7 @@
       el("guide-goal").value = data.goal || "";
       // Заготовка «TODO…» у «Вітанні» показується стандартним текстом, яким воно й буде.
       var greeting = String(data.opening || "");
-      el("guide-opening").value = /^\s*TODO/i.test(greeting) ? DEFAULT_CONSENT_TEXT : greeting;
+      el("guide-opening").value = /^\s*TODO/i.test(greeting) ? DEFAULT_OPENING_TEXT : greeting;
       el("guide-closing").value = data.closing || "";
       el("guide-max-turns").value = data.max_turns || 30;
       el("guide-feedback-prompt").value = data.feedback_prompt || "";
@@ -1131,6 +1131,12 @@
     "нам важливо зрозуміти, як усе відбувалося насправді.\n\n" +
     "Ви відповідатимете голосом, а система записуватиме та розшифровуватиме ваші відповіді. " +
     "Інтервʼю триватиме приблизно 30–50 хвилин.";
+
+  // Те саме, що DEFAULT_OPENING_TEXT: вступ + «Що важливо знати».
+  var DEFAULT_OPENING_TEXT = DEFAULT_CONSENT_TEXT + "\n\nЩо важливо знати\n" +
+    "• Тут немає правильних чи неправильних відповідей.\n" +
+    "• Ви можете припинити інтервʼю в будь-який момент.\n" +
+    "• Не називайте персональних даних інших людей.";
 
   function loadSpaceData() {
     api("/api/admin/space?space=" + encodeURIComponent(state.space)).then(function (data) {

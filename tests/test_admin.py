@@ -57,11 +57,12 @@ class TestAdminFiles(unittest.TestCase):
         self.assertEqual(consent_text_or_default("Мій текст"), "Мій текст")
 
     def test_new_guide_gets_default_greeting(self):
-        from app.config.space import DEFAULT_CONSENT_TEXT, opening_or_default
+        from app.config.space import DEFAULT_OPENING_TEXT, opening_or_default
         admin_api.create_space(self.root, "greet", "Вітання")
         guide = load_guide(os.path.join(self.root, "greet", "guides", "first.json"))
-        self.assertEqual(guide.opening, DEFAULT_CONSENT_TEXT)
-        self.assertEqual(opening_or_default("TODO: перше питання"), DEFAULT_CONSENT_TEXT)
+        self.assertEqual(guide.opening, DEFAULT_OPENING_TEXT)
+        self.assertIn("Що важливо знати", guide.opening)
+        self.assertEqual(opening_or_default("TODO: перше питання"), DEFAULT_OPENING_TEXT)
         self.assertEqual(opening_or_default(""), "")
         self.assertEqual(opening_or_default("Привіт!"), "Привіт!")
 

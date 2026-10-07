@@ -36,6 +36,16 @@ DEFAULT_CONSENT_TEXT = (
 )
 
 
+# Вітання гайда за замовчуванням: той самий вступ + блок «Що важливо знати».
+DEFAULT_OPENING_TEXT = (
+    DEFAULT_CONSENT_TEXT + "\n\n"
+    "Що важливо знати\n"
+    "• Тут немає правильних чи неправильних відповідей.\n"
+    "• Ви можете припинити інтервʼю в будь-який момент.\n"
+    "• Не називайте персональних даних інших людей."
+)
+
+
 def consent_text_or_default(text: str) -> str:
     value = (text or "").strip()
     if not value or value.upper().startswith("TODO"):
@@ -44,11 +54,11 @@ def consent_text_or_default(text: str) -> str:
 
 
 def opening_or_default(text: str) -> str:
-    """Вітання гайда за замовчуванням — той самий стандартний текст, що й першої сторінки.
+    """Вітання гайда за замовчуванням — стандартний вступ і «Що важливо знати».
     Лише для заготовки «TODO…»: свідомо порожнє вітання лишається порожнім."""
     value = (text or "").strip()
     if value.upper().startswith("TODO"):
-        return DEFAULT_CONSENT_TEXT
+        return DEFAULT_OPENING_TEXT
     return text
 
 

@@ -18,7 +18,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..config.space import DEFAULT_CONSENT_TEXT, ConfigError, load_guide, load_space
+from ..config.space import DEFAULT_CONSENT_TEXT, DEFAULT_OPENING_TEXT, ConfigError, load_guide, load_space
 from ..providers.base import ProviderError
 from ..providers.registry import build_llm
 from ..storage import db as store_db
@@ -596,7 +596,7 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
         guide = _load_json_aware(root, space_key, path) or {}
         guide.pop("_comment", None)
         guide["goal"] = "TODO: що саме треба зрозуміти"
-        guide["opening"] = DEFAULT_CONSENT_TEXT
+        guide["opening"] = DEFAULT_OPENING_TEXT
         guide["closing"] = "TODO: подяка без резюме"
         guide["topics"] = [{
             "id": "topic-1",
