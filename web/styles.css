@@ -866,8 +866,8 @@ textarea:focus {
    тонка риска знизу відділяє «про що сказати» від того, що вже сказано,
    і власний відступ картки (answer-block) замінює бічний padding. */
 /* Памʼятка стоїть ОКРЕМО під карткою відповіді, на тлі сторінки (без картки й розділювача). */
-.voice-area > .checklist { margin: 14px 0 32px; padding: 0; }
-/* Підпис і пункти — рівно по лівому краю колонки (разом з текстом питання й кнопками), без відступу картки. */
+.voice-area > .checklist { margin: 14px 0 32px; padding: 0 6px; }
+/* Підпис і пункти — з невеликим відступом 6px з боків (щоб цифри й стрілка не липли до краю колонки), без відступу картки. */
 .voice-area > .checklist ul { padding-left: 0; list-style-position: inside; }
 /* Памʼятка під текстом відповіді згортається: заголовок — кнопка зі стрілкою. */
 .checklist-toggle {
@@ -884,6 +884,7 @@ textarea:focus {
 .checklist-title {
   display: flex; align-items: baseline; gap: 7px;
   font-size: 12px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--accent);
