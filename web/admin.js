@@ -1930,86 +1930,211 @@
     });
   }
 
+  /* Розбір «живого» документа: гайд у Markdown/Word зазвичай має назву, вступ
+     (привітання), розділи-блоки, питання з маркерами «Q1.»/«1.», внутрішні
+     нотатки («Аналітична мета (не озвучується)»), завершення й нотатки для
+     команди. Кожна частина йде у своє поле: питання — в картки, назви розділів —
+     у назви блоків, привітання й завершення — у «Вітання» та «Прощання»;
+     внутрішні нотатки респондентові не показуються, тож їх не переносимо. */
+  var SECTION_OPENING = /^(?:вступн|привітан|вітанн|вступ\b|greeting|intro)/i;
+  var SECTION_CLOSING = /^(?:завершенн|прощанн|закінченн|closing|outro)/i;
+  var SECTION_SKIP = /^(?:нотатк|примітк|notes?\b|мета дослідж|контекст дослідж|для команди|додатк|appendix)/i;
+  var NOTE_START = /^(?:аналітична мета|мета питання|аналітична ціль|analytic(?:al)? goal)/i;
+  var NOTE_TAIL = /\s*(?:аналітична мета|мета питання|аналітична ціль|analytic(?:al)? goal)[^:]*:.*$/i;
+  var QUESTION_MARKER = /^(?:(?:Q|П|Питання|Question)\s*(\d+)|(\d+))\s*([.:)\-–—])\s+(\S.*)$/i;
+
+  function firstQuote(line) {
+    var m = line.match(/[«“"„]([^»”"]{8,})[»”"]/);
+    return m ? m[1].trim() : "";
+  }
+
+  function stripBlockLabel(title) {
+    return title.replace(new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?[\\dIVXLC]*\\s*[:.\\-–—)]\\s*", "i"), "").trim();
+  }
+
   function importFromText(text) {
     var out = [];
+    var result = { items: out, opening: "", closing: "", skipped: 0 };
     var block = "";
+    var mode = "questions";   // questions | opening | closing | skip
     var last = null;          // останнє питання — до нього відносяться пункти чекліста
     var lastNumbered = false; // питання було пронумероване (тоді «- …» під ним — пункти)
     var lastNumber = 0;       // номер останнього пронумерованого питання
     var inChecklist = false;  // після рядка «Про що варто сказати:»
     var checklistStart = 0;   // скільки пунктів було до цього підпису
-    var heading = [
-      /^#{1,6}\s+(.+)$/,
-      new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?[\\dIVXLC]*\\s*[:.\\-–—)]\\s*(.+)$", "i")
-    ];
+    var continuing = false;   // попередній рядок — питання, наступний може бути його продовженням
+
+    var lines = text.split(/\r?\n/).map(function (raw) {
+      // Жирний шрифт і підкреслення з Markdown («**Блок: Назва**») зрізаємо.
+      return raw.replace(/\*\*|__|`/g, "").replace(/^\s*>\s?/, "").trim();
+    });
+    var structured = lines.some(function (l) { return QUESTION_MARKER.test(l); });
+    var hasSubHeadings = lines.some(function (l) { return /^#{2,6}\s+\S/.test(l); });
+
+    var heading = new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?[\\dIVXLC]*\\s*[:.\\-–—)]\\s*(.+)$", "i");
     var bare = new RegExp("^(?:" + IMPORT_BLOCK_WORDS + ")\\s*(?:№\\s*)?\\d+$", "i");
     // Підпис чекліста: так він зветься в редакторі («Про що варто сказати:»).
     var label = /^(?:про що (?:варто )?(?:сказати|почути)|чекліст|checklist)\s*:\s*(.*)$/i;
 
-    text.split(/\r?\n/).forEach(function (raw) {
-      // Жирний шрифт і підкреслення з Markdown («**Блок: Назва**») зрізаємо.
-      var line = raw.replace(/\*\*|__|`/g, "").trim();
-      if (!line) return;
+    function setBlock(name) {
+      block = name;
+      last = null;
+      inChecklist = false;
+      continuing = false;
+    }
+
+    lines.forEach(function (line) {
+      if (!line) { continuing = false; return; }
+
+      var md = line.match(/^(#{1,6})\s+(.+)$/);
+      if (md) {
+        var level = md[1].length;
+        var title = md[2].replace(/[*_`]+/g, "").trim();
+        if (level === 1 && hasSubHeadings) { mode = "skip"; setBlock(block); return; } // назва документа
+        if (SECTION_OPENING.test(title)) { mode = "opening"; setBlock(block); return; }
+        if (SECTION_CLOSING.test(title)) { mode = "closing"; setBlock(block); return; }
+        if (SECTION_SKIP.test(title)) { mode = "skip"; setBlock(block); return; }
+        mode = "questions";
+        setBlock(stripBlockLabel(title));
+        return;
+      }
+
+      if (mode === "skip") return;
+      if (mode === "opening") { if (!result.opening) result.opening = firstQuote(line); return; }
+      if (mode === "closing") { if (!result.closing) result.closing = firstQuote(line); return; }
 
       var lm = line.match(label);
       if (lm && last) {
         inChecklist = true;
+        continuing = false;
         checklistStart = last.must_learn.length;
         if (lm[1].trim()) last.must_learn.push(lm[1].trim());
         return;
       }
 
-      var found = null;
-      for (var i = 0; i < heading.length && !found; i++) {
-        var m = line.match(heading[i]);
-        if (m) found = m[1];
-      }
-      if (!found && bare.test(line)) found = line;
-      // «Знайомство:» — рядок із двокрапкою наприкінці й без знака питання — теж заголовок.
-      if (!found && /:$/.test(line) && line.indexOf("?") === -1) found = line.slice(0, -1);
-      if (found) {
-        block = found.replace(/^#+\s*/, "").trim();
-        last = null;
-        inChecklist = false;
-        return;
-      }
+      // Окремий рядок-нотатка («Аналітична мета: …») — внутрішнє, респондентові не показуємо.
+      if (NOTE_START.test(line)) { result.skipped++; continuing = false; return; }
 
+      var found = null;
+      var hm = line.match(heading);
+      if (hm) found = hm[1];
+      if (!found && bare.test(line)) found = line;
+      // «Знайомство:» — рядок із двокрапкою наприкінці й без знака питання — теж заголовок
+      // (лише в документі без маркерів питань: інакше це підпис якогось іншого роду).
+      if (!found && !structured && /:$/.test(line) && line.indexOf("?") === -1) found = line.slice(0, -1);
+      if (found) { setBlock(found.trim()); return; }
+
+      var qm = line.match(QUESTION_MARKER);
+      var isQMarker = !!(qm && qm[1]);
+      var number = qm ? parseInt(qm[1] || qm[2], 10) : 0;
+      var paren = !!(qm && !isQMarker && qm[3] === ")");
+      var dotted = !!(qm && !paren);
       var bullet = /^[-*•]\s+/.test(line);
-      var paren = line.match(/^(\d+)\)\s+/);
-      var dotted = line.match(/^(\d+)\.\s+/);
-      var number = paren ? parseInt(paren[1], 10) : (dotted ? parseInt(dotted[1], 10) : 0);
-      var content = line.replace(/^(?:[-*•]|\d+[.)])\s+/, "").trim();
+      var content = qm ? qm[4] : line.replace(/^[-*•]\s+/, "").trim();
+      if (NOTE_TAIL.test(content)) { content = content.replace(NOTE_TAIL, "").trim(); result.skipped++; }
       if (!content) return;
 
       if (inChecklist && last) {
         // У чеклісті: «1)» і «-» — пункти. «N.» — нове питання лише коли N — наступний
-        // номер питання; інакше це теж пункт.
-        // Коли «N.» збігається і з наступним питанням, і з наступним пунктом — вирішує
-        // знак питання наприкінці: пункти шпаргалки зазвичай не питання.
+        // номер питання; інакше це теж пункт. «Q5.» — завжди питання.
         var nextPoint = last.must_learn.length - checklistStart + 1;
-        var isQuestion = dotted && number === lastNumber + 1 &&
-          (number !== nextPoint || /\?$/.test(content));
+        var isQuestion = isQMarker || (dotted && number === lastNumber + 1 &&
+          (number !== nextPoint || /\?$/.test(content)));
         if (!isQuestion && (bullet || paren || dotted)) { last.must_learn.push(content); return; }
+        if (!isQuestion && !qm && !bullet && structured) return;
         inChecklist = false;
       }
       // «- …» одразу під пронумерованим питанням — пункт його чекліста, а не нове питання.
       if (bullet && last && lastNumbered) { last.must_learn.push(content); return; }
 
+      if (structured && !qm && !bullet) {
+        // У документі з маркерами питань рядок без маркера — або продовження питання, або
+        // просто текст (опис, коментар): у картки його не беремо.
+        if (continuing && last) last.text += " " + content;
+        return;
+      }
+
       last = { text: content, must_learn: [], block: block };
-      lastNumbered = !!(paren || dotted);
-      if (lastNumbered) lastNumber = number;
+      lastNumbered = !!qm;
+      if (qm) lastNumber = number;
+      continuing = true;
       out.push(last);
     });
-    return out;
+    return result;
+  }
+
+  /* Word (.docx) — це zip із XML. Читаємо без бібліотек: знаходимо word/document.xml,
+     розпаковуємо вбудованим DecompressionStream і збираємо абзаци в текст із «#»-заголовками
+     та «-» для списків — далі працює той самий розбір, що й для Markdown. */
+  function readZipEntry(buffer, wanted) {
+    var view = new DataView(buffer);
+    var bytes = new Uint8Array(buffer);
+    var end = -1;
+    for (var i = bytes.length - 22; i >= Math.max(0, bytes.length - 70000); i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+    }
+    if (end < 0) throw new Error("це не Word-документ");
+    var count = view.getUint16(end + 10, true);
+    var pos = view.getUint32(end + 16, true);
+    for (var n = 0; n < count; n++) {
+      if (view.getUint32(pos, true) !== 0x02014b50) break;
+      var method = view.getUint16(pos + 10, true);
+      var size = view.getUint32(pos + 20, true);
+      var nameLen = view.getUint16(pos + 28, true);
+      var extraLen = view.getUint16(pos + 30, true);
+      var commentLen = view.getUint16(pos + 32, true);
+      var offset = view.getUint32(pos + 42, true);
+      var name = new TextDecoder().decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+      if (name === wanted) {
+        var localName = view.getUint16(offset + 26, true);
+        var localExtra = view.getUint16(offset + 28, true);
+        var data = bytes.subarray(offset + 30 + localName + localExtra, offset + 30 + localName + localExtra + size);
+        if (method === 0) return Promise.resolve(new TextDecoder().decode(data));
+        if (method === 8 && typeof DecompressionStream === "function") {
+          var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+          return new Response(stream).text();
+        }
+        throw new Error("браузер не вміє розпаковувати цей Word-файл");
+      }
+      pos += 46 + nameLen + extraLen + commentLen;
+    }
+    throw new Error("у файлі немає тексту документа");
+  }
+
+  function docxXmlToText(xml) {
+    var doc = new DOMParser().parseFromString(xml, "application/xml");
+    var out = [];
+    var paragraphs = doc.getElementsByTagNameNS("*", "p");
+    Array.prototype.forEach.call(paragraphs, function (p) {
+      var text = "";
+      Array.prototype.forEach.call(p.getElementsByTagNameNS("*", "*"), function (node) {
+        var tag = node.localName;
+        if (tag === "t") text += node.textContent;
+        else if (tag === "tab") text += " ";
+        else if (tag === "br") text += " ";
+      });
+      text = text.replace(/\s+/g, " ").trim();
+      if (!text) { out.push(""); return; }
+      var style = p.getElementsByTagNameNS("*", "pStyle")[0];
+      var styleId = style ? (style.getAttribute("w:val") || style.getAttribute("val") || "") : "";
+      var heading = styleId.match(/^(?:Heading|Заголовок)\s*(\d)/i);
+      if (/^Title$/i.test(styleId)) out.push("# " + text);
+      else if (heading) out.push("#".repeat(Math.min(6, parseInt(heading[1], 10))) + " " + text);
+      else if (p.getElementsByTagNameNS("*", "numPr").length) out.push("- " + text);
+      else out.push(text);
+      out.push("");
+    });
+    return out.join("\n");
   }
 
   function parseQuestionsFile(name, text) {
     text = String(text || "").replace(/^﻿/, "");
-    var items;
-    if (/\.json$/i.test(name)) items = importFromJson(JSON.parse(text), "", []);
-    else if (/\.csv$/i.test(name)) items = importFromCsv(text);
-    else items = importFromText(text);
-    return items.filter(function (q) { return q.text; });
+    var parsed;
+    if (/\.json$/i.test(name)) parsed = { items: importFromJson(JSON.parse(text), "", []) };
+    else if (/\.csv$/i.test(name)) parsed = { items: importFromCsv(text) };
+    else parsed = importFromText(text);
+    parsed.items = parsed.items.filter(function (q) { return q.text; });
+    return parsed;
   }
 
   /* Питання з назвою блоку йдуть у блок із такою назвою (існуючий або новий);
@@ -2069,7 +2194,7 @@
     if (host) host.innerHTML = "";
   }
 
-  function addImportedDoc(importId, name, count, newBlocks) {
+  function addImportedDoc(importId, name, count, newBlocks, extras, skipped) {
     var row = document.createElement("div");
     row.className = "import-result";
     row.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>';
@@ -2081,6 +2206,8 @@
     countNode.className = "import-count";
     var message = count + " " + pluralQuestions(count);
     if (newBlocks) message += ", нових блоків: " + newBlocks;
+    if (extras && extras.length) message += ", заповнено: " + extras.join(" і ");
+    if (skipped) message += ", внутрішніх нотаток пропущено: " + skipped;
     countNode.textContent = message;
     row.appendChild(countNode);
     var remove = document.createElement("button");
@@ -2246,25 +2373,54 @@
     }
   }
 
+  /* Вітання/Прощання з документа: порожнє поле й заготовка «TODO» заповнюються
+     завжди; а текст із завантаженого гайда (чи шаблону) — лише коли редактор
+     порожній (імпорт замінює заготовку) і дослідниця його не правила в цій
+     сесії. Свій набраний текст не перезаписуємо. */
+  function fillIfUntouched(fieldId, savedKey, value, replaceSaved) {
+    var field = el(fieldId);
+    if (!value || !field) return false;
+    var current = field.value.trim();
+    var saved = String((state.guideData && state.guideData[savedKey]) || "").trim();
+    if (current && !/^TODO/i.test(current) && !(replaceSaved && current === saved)) return false;
+    field.value = value;
+    return true;
+  }
+
   function importQuestionsFile(file) {
     var errorNode = el("import-error");
     errorNode.textContent = "";
     if (!file) return;
-    if (file.size > 200 * 1024) { errorNode.textContent = "Файл завеликий: до 200 КБ."; return; }
+    var isDocx = /\.docx$/i.test(file.name);
+    if (file.size > (isDocx ? 4 * 1024 * 1024 : 200 * 1024)) {
+      errorNode.textContent = "Файл завеликий: до " + (isDocx ? "4 МБ." : "200 КБ.");
+      return;
+    }
     var reader = new FileReader();
     reader.onerror = function () { errorNode.textContent = "Не вдалося прочитати файл."; };
     reader.onload = function () {
-      var questions;
-      try { questions = parseQuestionsFile(file.name, reader.result); }
-      catch (err) { errorNode.textContent = "Файл не схожий на список питань: " + err.message; return; }
-      if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
-      if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
-      importSeq += 1;
-      var added = appendImportedQuestions(questions, importSeq);
-      var row = addImportedDoc(importSeq, file.name, questions.length, added.newBlocks);
-      improveImportedQuestions(added.cards, row);
+      var read = isDocx
+        ? readZipEntry(reader.result, "word/document.xml").then(docxXmlToText)
+        : Promise.resolve(reader.result);
+      read.then(function (text) {
+        var parsed = parseQuestionsFile(file.name, text);
+        var questions = parsed.items;
+        if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
+        if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
+        importSeq += 1;
+        var blank = editorIsBlank();
+        var added = appendImportedQuestions(questions, importSeq);
+        var extras = [];
+        if (fillIfUntouched("guide-opening", "opening", parsed.opening, blank)) extras.push("привітання");
+        if (fillIfUntouched("guide-closing", "closing", parsed.closing, blank)) extras.push("прощання");
+        var row = addImportedDoc(importSeq, file.name, questions.length, added.newBlocks, extras, parsed.skipped);
+        improveImportedQuestions(added.cards, row);
+      }).catch(function (err) {
+        errorNode.textContent = "Файл не схожий на список питань: " + err.message;
+      });
     };
-    reader.readAsText(file, "utf-8");
+    if (isDocx) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file, "utf-8");
   }
   (function () {
     var drop = el("import-drop");
