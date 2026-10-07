@@ -1838,16 +1838,22 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
    білі картки під окремим заголовком із лінією («що піде в інтервʼю»). */
 .import-section { margin-bottom: 40px; }
 .import-section .import-box { margin-bottom: 0; }
-/* Один блок, не блок у блоці: лавандові кольори розділу несе сама пунктирна зона. */
+/* Один блок, не блок у блоці. Зона спокійна: прозорий фон і темна нейтральна
+   пунктирна рамка, без кольору — акцентні кольори лишаються для дій. */
 .import-section .import-drop {
-  background: color-mix(in srgb, var(--primary-fill) 7%, var(--surface));
-  border-color: color-mix(in srgb, var(--primary-fill) 45%, var(--line));
+  background: transparent;
+  border-color: color-mix(in srgb, var(--text) 32%, var(--line));
 }
 .import-section .import-drop:hover, .import-section .import-drop:focus-visible, .import-section .import-drop.dragover {
-  background: color-mix(in srgb, var(--primary-fill) 13%, var(--surface));
-  border-color: var(--primary-fill);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border-color: color-mix(in srgb, var(--text) 60%, var(--line));
 }
-.import-section .import-icon { background: var(--surface); }
+.import-section .import-icon,
+.import-section .import-drop:hover .import-icon,
+.import-section .import-drop:focus-visible .import-icon,
+.import-section .import-drop.dragover .import-icon {
+  background: color-mix(in srgb, var(--text) 8%, var(--surface)); color: var(--text);
+}
 .guide-section-head {
   margin: 0 0 20px; padding-top: 24px; border-top: 1px solid var(--line);
 }
