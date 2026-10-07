@@ -1858,3 +1858,7 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
 }
 .guide-section-head h2 { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: var(--text); }
 .guide-section-head p { margin: 0; font-size: 14px; color: var(--muted); }
+
+/* Кошик у рядку документа: іконка змінює колір разом із кнопкою (червоніє на ховері),
+   а не тримає власний сірий із .import-result .icon. */
+.import-result .import-dismiss .icon { color: inherit; }
