@@ -508,6 +508,9 @@ def make_handler(
                 "title": space.title,
                 "accent": space.branding.get("accent", "#3a3a3a"),
                 "consent_text": space.privacy.consent_text,
+                # Вітання-вступ показується на першій сторінці форми замість тексту згоди.
+                "opening_intro": bool(getattr(guide, "opening_intro", False)),
+                "opening": guide.opening if getattr(guide, "opening_intro", False) else "",
                 "languages": space.languages,
                 "voice": {
                     "stt": (space.providers.get("stt") or {}).get("provider", "none"),

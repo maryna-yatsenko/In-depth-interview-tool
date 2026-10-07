@@ -127,7 +127,9 @@ class Plan:
         Не протокол, не умова, не замок.
         """
         items = []
-        if self.guide.opening:
+        # Вітання-вступ (`opening_intro`) — текст першої сторінки форми, а не питання інтервʼю:
+        # у сценарій воно не входить, розмова починається з першого справжнього питання.
+        if self.guide.opening and not getattr(self.guide, "opening_intro", False):
             items.append({
                 "id": "opening", "text": self.guide.opening,
                 "section": WARMUP, "topic_id": "",
@@ -186,7 +188,9 @@ class Plan:
         `blocks=True` розгортає «Теми» у окремі кроки за смисловими блоками
         гайда (`Topic.block`); без блоків лишається один крок «Теми».
         """
-        items = [{"phase": WARMUP, "title": "Початок"}]
+        items = []
+        if not getattr(self.guide, "opening_intro", False):
+            items.append({"phase": WARMUP, "title": "Початок"})
         if self.guide.narrative_prompt:
             # «Розповідь», не «Ваша розповідь»: на телефоні довгий підпис
             # обрізався трьома точками в пройденому розділі.

@@ -215,20 +215,12 @@ class Session:
     def at_end(self) -> bool:
         return not self.script or self.cursor >= len(self.script) - 1
 
-    def is_intro_step(self) -> bool:
-        """Поточний крок — вітання, на яке не треба відповідати (`opening_intro` у гайді)."""
-        return bool(getattr(self.guide, "opening_intro", False)
-                    and (self.current_question() or {}).get("id") == "opening")
-
     def answered_current(self) -> bool:
         """Чи є відповідь на поточне питання.
 
         «Наступне» вмикається лише після відповіді: інакше людина проклацає
-        інтервʼю, не сказавши нічого, і в даних лишиться порожньо. Вітання-вступ
-        відповіді не потребує.
+        інтервʼю, не сказавши нічого, і в даних лишиться порожньо.
         """
-        if self.is_intro_step():
-            return True
         question_id = (self.current_question() or {}).get("id")
         if not question_id:
             return False
@@ -249,7 +241,8 @@ class Session:
                       and turn.get("question_id") == question["id"]
                       for turn in self.turns)
         text = question["text"]
-        if self.cursor == 0 and self.space.persona.self_intro:
+        if (self.cursor == 0 and self.space.persona.self_intro
+                and not getattr(self.guide, "opening_intro", False)):
             # Відкриття несе рамку всієї розмови — воно однакове для всіх.
             text = "%s\n\n%s" % (self.space.persona.self_intro, text)
         if not already:
@@ -764,8 +757,6 @@ class Session:
         current_block = current_question.get("block", "")
         answered_ids = {t.get("question_id") for t in self.turns
                         if t.get("role") == "respondent" and t.get("question_id")}
-        if getattr(self.guide, "opening_intro", False) and self.cursor > 0:
-            answered_ids.add("opening")   # вступ «пройдено», коли людина пішла далі
         out = []
         for sec in self.plan.sections(blocks=True):
             has_block = "block" in sec
@@ -851,7 +842,6 @@ class Session:
                 "at_start": self.at_start(),
                 "at_end": self.at_end(),
                 "answered": self.answered_current(),
-                "intro": self.is_intro_step(),
                 # Судження зникло з навігації — тут воно лишається як
                 # інформація на прощання, не як умова.
                 "depth": self.answer_depth_stats(),

@@ -185,26 +185,24 @@ class TestScriptedFlow(unittest.TestCase):
         info = session.progress_info()
         self.assertEqual([s["title"] for s in info["sections"] if s["current"]], ["Вибір"])
 
-    def test_intro_greeting_needs_no_answer(self):
-        """Вітання-вступ (`opening_intro`) не блокує перехід до питань і не лишається «без відповіді»."""
+    def test_intro_greeting_is_first_page_text_not_a_question(self):
+        """Вітання-вступ (`opening_intro`) показується на першій сторінці форми й не входить у
+        сценарій: розмова починається з першого питання, без кроку «Початок»."""
         self.guide.opening_intro = True
         session = Session(self.space, self.guide, Counting())
+        ids = [item["id"] for item in session.script]
+        self.assertNotIn("opening", ids)
         session.start()
         info = session.progress_info()
-        self.assertTrue(info["intro"])
-        self.assertTrue(info["answered"])
-        session.go(1)
-        info = session.progress_info()
-        self.assertFalse(info["intro"])
-        self.assertFalse(info["answered"])  # питання після вступу відповіді потребує
-        opening = next(s for s in info["sections"] if s["phase"] == phases.WARMUP)
-        self.assertEqual(opening["answered"], opening["total"])
+        self.assertNotIn("Початок", [s["title"] for s in info["sections"]])
+        self.assertIn("питання 1 з %d" % len(session.script), info["detail"])
+        self.assertNotIn(self.space.persona.self_intro, session.current_question()["text"])
 
-    def test_opening_without_intro_flag_still_needs_answer(self):
+    def test_opening_without_intro_flag_is_still_the_first_question(self):
         self.guide.opening_intro = False
         session = Session(self.space, self.guide, Counting())
+        self.assertEqual(session.script[0]["id"], "opening")
         session.start()
-        self.assertFalse(session.progress_info()["intro"])
         self.assertFalse(session.answered_current())
 
     def test_depth_stats_count_distinct_questions(self):

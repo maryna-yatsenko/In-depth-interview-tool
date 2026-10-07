@@ -1349,12 +1349,3 @@ html[data-canvas-hold="drum"] .confetti { display: none; }
 @supports (-moz-appearance: none) {
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent; }
 }
-
-/* Вітання-вступ (guide.opening_intro): відповідати нічого — лишається одна кнопка «Далі». */
-.intro-next { display: none; }
-.voice-area.intro .intro-next { display: inline-flex; }
-.voice-area.intro .answer-block,
-.voice-area.intro .voice-controls,
-.voice-area.intro .answer-actions,
-.voice-area.intro .wave,
-.voice-area.intro #voice-status { display: none; }

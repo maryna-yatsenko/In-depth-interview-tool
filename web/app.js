@@ -1091,10 +1091,6 @@
     if (typeof progress.at_end === "boolean") state.atEnd = progress.at_end;
     if (typeof progress.answered === "boolean") state.answered = progress.answered;
     state.scripted = !!progress.scripted;
-    // Вітання-вступ: відповідати нічого, лише «Далі» (решта керування відповіддю ховається).
-    state.intro = !!progress.intro;
-    var voiceArea = el("voice-area");
-    if (voiceArea) voiceArea.classList.toggle("intro", state.intro);
     state.depth = progress.depth || null;
     // Останнє питання: кнопка каже, що буде далі, — інакше людина не знає, що
     // натискає завершення розмови.
@@ -1385,6 +1381,34 @@
   }
   initThemeSwitch();
 
+  /* Перша сторінка форми. Якщо Вітання гайда — вступ (opening_intro), саме воно й є текстом
+     цієї сторінки: абзаци до рядка «Що важливо знати» — вступ, рядки під ним — пункти картки.
+     Інакше — текст згоди простору й типова картка «Що важливо знати». */
+  function renderFirstPage(space) {
+    var note = el("privacy-note");
+    var list = el("privacy-note-list");
+    var intro = String((space.opening_intro && space.opening) || "").trim();
+    if (!intro) {
+      el("consent-text").textContent = space.consent_text ||
+        "Розмова записується у вигляді тексту і використовується для дослідження.";
+      return;
+    }
+    var heading = intro.match(/^\s*Що важливо знати\s*:?\s*$/im);
+    var head = heading ? intro.slice(0, heading.index) : intro;
+    var tail = heading ? intro.slice(heading.index + heading[0].length) : "";
+    el("consent-text").textContent = head.trim();
+    var points = tail.split(/\r?\n/).map(function (line) {
+      return line.replace(/^\s*(?:[-•*–—]|\d+[.)])\s*/, "").trim();
+    }).filter(Boolean);
+    list.innerHTML = "";
+    points.forEach(function (text) {
+      var li = document.createElement("li");
+      li.textContent = text;
+      list.appendChild(li);
+    });
+    note.classList.toggle("hidden", !points.length);
+  }
+
   function loadSpace() {
     return fetch(withSpace("/api/space")).then(function (r) { return r.json(); }).then(function (space) {
       state.space = space;
@@ -1399,8 +1423,7 @@
       syncStartButton();
       document.title = space.title;
       el("consent-title").textContent = space.title;
-      el("consent-text").textContent = space.consent_text ||
-        "Розмова записується у вигляді тексту і використовується для дослідження.";
+      renderFirstPage(space);
       // Кастомний акцент простору (space.accent) свідомо ігноруємо: сторінка
       // респондента завжди показує стандартний фіолетовий, в обох темах —
       // те саме поле в адмінці згодом приберуть як застаріле.
@@ -1766,7 +1789,6 @@
     if (state.atEnd) finishFlow(); else step(1);
   });
   el("btn-prev").addEventListener("click", function () { step(-1); });
-  el("btn-intro-next").addEventListener("click", function () { step(1); });
   el("btn-send-answer").addEventListener("click", submitAnswer);
   el("btn-voice-again").addEventListener("click", function () {
     // Стирається те, що ще не пішло. Надіслане вже в транскрипті — прибрати
