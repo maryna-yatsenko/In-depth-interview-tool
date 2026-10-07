@@ -26,6 +26,11 @@ class Persona:
     self_intro: str                      # як інтервʼюер представляється
 
 
+# Як інтервʼюер представляється, поки дослідник не написав свого: коротке нейтральне
+# вітання. Заготовка «TODO…» у space.json ніколи не доходить до респондента.
+DEFAULT_SELF_INTRO = "Доброго дня! Дякую, що знайшли час."
+
+
 # Текст першої сторінки форми за замовчуванням: його бачить респондент, поки
 # дослідник не написав свій. Діє й для порожнього поля, і для заготовки «TODO…».
 DEFAULT_CONSENT_TEXT = (
@@ -252,7 +257,9 @@ def load_space(path: str) -> SpaceConfig:
         key=data["key"],
         title=data["title"],
         languages=data["languages"],
-        persona=Persona(self_intro=persona_raw["self_intro"]),
+        persona=Persona(self_intro=DEFAULT_SELF_INTRO
+                        if str(persona_raw["self_intro"]).strip().upper().startswith("TODO")
+                        else persona_raw["self_intro"]),
         privacy=privacy,
         branding=data.get("branding", {}),
         providers=data.get("providers", {}),

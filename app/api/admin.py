@@ -19,7 +19,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..config.space import (DEFAULT_CHECKLIST, DEFAULT_CLOSING_TEXT, DEFAULT_CONSENT_TEXT,
-                            DEFAULT_FIRST_QUESTION, DEFAULT_OPENING_TEXT, ConfigError, load_guide,
+                            DEFAULT_FIRST_QUESTION, DEFAULT_OPENING_TEXT, DEFAULT_SELF_INTRO,
+                            ConfigError, load_guide,
                             load_space)
 from ..providers.base import ProviderError
 from ..providers.registry import build_llm
@@ -578,7 +579,7 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     data["interface"] = dict(data.get("interface") or {})
     data["interface"]["record_voice"] = True
     data["persona"] = dict(data.get("persona") or {})
-    data["persona"]["self_intro"] = "TODO: як інтервʼюер представляється респонденту"
+    data["persona"]["self_intro"] = DEFAULT_SELF_INTRO
     privacy = dict(data.get("privacy") or {})
     privacy["deidentify"] = False
     privacy["consent_text"] = DEFAULT_CONSENT_TEXT

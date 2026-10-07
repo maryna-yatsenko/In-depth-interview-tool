@@ -41,7 +41,7 @@ class TestAdminFiles(unittest.TestCase):
         blob = (space.persona.self_intro + guide.goal + guide.opening +
                 " ".join(t.title for t in guide.topics)).lower()
         self.assertNotIn("велосипед", blob)
-        self.assertIn("todo", space.persona.self_intro.lower())
+        self.assertNotIn("todo", space.persona.self_intro.lower())
 
     def test_new_space_gets_default_consent_text(self):
         from app.config.space import DEFAULT_CONSENT_TEXT
