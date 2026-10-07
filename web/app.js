@@ -977,6 +977,17 @@
     var shell = document.querySelector(".shell");
     if (shell) shell.classList.toggle("shell-fixed", name === "interview");
     recalcBottomSpace();
+    if (name === "done") placeConfettiOrigin();
+  }
+
+  // Конфеті вилітає з горла хлопавки: беремо його центр у координатах вікна.
+  function placeConfettiOrigin() {
+    var mouth = document.querySelector(".clap .pp-mouth");
+    if (!mouth) return;
+    var r = mouth.getBoundingClientRect();
+    var root = document.documentElement.style;
+    root.setProperty("--ox", Math.round(r.left + r.width / 2) + "px");
+    root.setProperty("--oy", Math.round(r.top + r.height / 2) + "px");
   }
 
   /* Один вихід на екран подяки з двох різних місць (вільна розповідь

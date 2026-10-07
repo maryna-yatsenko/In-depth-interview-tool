@@ -725,6 +725,24 @@ textarea:focus {
     var(--btn-fill) 70%);
 }
 
+/* Активний запис — колишній «електричний» фіолет, як і було; змінена лише хвиля навколо кнопки:
+   вона ледь помітна й повільна (8px, 2.6с), а не різке кільце. */
+.talk[aria-pressed="true"] {
+  background: linear-gradient(180deg, #8a6cf2 0%, #6741d9 75%);
+  border-color: #6741d9; color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 1px rgba(20, 20, 20, .18), 0 8px 16px -8px rgba(20, 20, 20, .35);
+  animation: talk-wave 2.6s ease-out infinite;
+}
+.talk:hover[aria-pressed="true"]:not(:disabled) {
+  background: linear-gradient(180deg, #9b80f5 0%, #6741d9 70%);
+  border-color: #6741d9; color: #fff;
+}
+@keyframes talk-wave {
+  0% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px rgba(20, 20, 20, .35), 0 0 0 0 rgba(138, 108, 242, .3); }
+  100% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px rgba(20, 20, 20, .35), 0 0 0 8px rgba(138, 108, 242, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"] { animation: none; } }
+
 
 /* «Попереднє» й «Наступне» — по краях, не парою в центрі: це протилежні дії
    (назад/вперед), і рознесення саме про це каже, ще до читання підписів. */
@@ -1233,7 +1251,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-strong)
 }
 .clap {
   position: absolute; z-index: 1; left: 50%; top: -64px; margin-left: -127px;
-  width: 290px; height: auto; overflow: visible; transform: rotate(-14deg); transform-origin: 50% 75%;
+  width: 290px; height: auto; overflow: visible; transform: rotate(14deg); transform-origin: 50% 75%;
   animation: drum-out .5s ease-in 3.1s forwards;
 }
 /* Хлопавка у відтінках теми. Спочатку ледь труситься, на 0,45 с вистрілює (віддача + спалах), конфеті летить з її горла. */
@@ -1248,11 +1266,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-strong)
 /* Три постріли поспіль (0,5 с, 1,3 с, 2,1 с): кожен — замах назад, різка віддача вниз із приплющенням і пружне повернення. */
 @keyframes pp-pop {
   0% { transform: none; }
-  18% { transform: rotate(-5deg) translateY(2px); }
-  36% { transform: rotate(-9deg) translateY(4px) scale(.97, 1.03); }
-  48% { transform: rotate(-9deg) translateY(4px) scale(.97, 1.03); }
-  54% { transform: rotate(5deg) translateY(16px) scale(1.12, .84); }
-  70% { transform: rotate(-2deg) translateY(-4px) scale(.98, 1.04); }
+  18% { transform: rotate(5deg) translateY(2px); }
+  36% { transform: rotate(9deg) translateY(4px) scale(.97, 1.03); }
+  48% { transform: rotate(9deg) translateY(4px) scale(.97, 1.03); }
+  54% { transform: rotate(-5deg) translateY(16px) scale(1.12, .84); }
+  70% { transform: rotate(2deg) translateY(-4px) scale(.98, 1.04); }
   100% { transform: none; }
 }
 @keyframes pp-flash { 0%, 47% { opacity: 0; transform: scale(.3); } 52% { opacity: 1; transform: scale(.7); } 100% { opacity: 0; transform: scale(2.6); } }
@@ -1278,13 +1296,14 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-strong)
   /* Вміст по центру екрана по вертикалі; на низькому вікні він просто росте вниз. */
   display: flex; flex-direction: column; justify-content: center;
 }
-.confetti { position: absolute; z-index: 0; left: 50%; top: calc(55% - 36px); width: 0; height: 0; opacity: 0; pointer-events: none; animation: cf-show 0s calc(var(--dl, 2.5s)) forwards, cf-x var(--t, 4s) cubic-bezier(.2, .45, .55, .95) var(--dl, 2.5s) forwards; }
+/* Конфеті — fixed: вилітає з горла хлопавки (--ox/--oy ставить app.js) і розлітається по ВСЬОМУ екрану,
+   а не лише по колонці. --fx — де по ширині екрана (0–1) воно приземлиться, --upf — частка висоти до піку. */
+.confetti { position: fixed; z-index: 0; left: var(--ox, 50vw); top: var(--oy, 45vh); width: 0; height: 0; opacity: 0; pointer-events: none; animation: cf-show 0s calc(var(--dl, 2.5s)) forwards, cf-x var(--t, 4s) cubic-bezier(.2, .45, .55, .95) var(--dl, 2.5s) forwards; }
 .confetti i { position: absolute; left: 0; top: 0; display: block; animation: cf-y var(--t, 4s) linear var(--dl, 2.5s) forwards, cf-out var(--t, 4s) linear var(--dl, 2.5s) forwards; }
 .confetti b {
   position: absolute; left: calc(var(--w, 8px) / -2); top: calc(var(--h, 12px) / -2); display: block;
   width: var(--w, 8px); height: var(--h, 12px); border-radius: 2px;
-  background: linear-gradient(115deg, color-mix(in srgb, var(--c) 40%, #fff) 0%, var(--c) 28%, #fff 48%, var(--c) 66%, color-mix(in srgb, var(--c) 70%, #000) 100%);
-  box-shadow: 0 0 5px color-mix(in srgb, var(--c) 55%, #fff);
+  background: var(--c);
   animation: cf-flutter var(--f, .8s) linear var(--dl, 2.5s) var(--n, 5);
 }
 .confetti b.ribbon { border-radius: 3px; }
@@ -1294,20 +1313,17 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent-strong)
   clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
 }
 @keyframes cf-show { to { opacity: 1; } }
-@keyframes cf-x { to { transform: translateX(var(--dx)); } }
+@keyframes cf-x { to { transform: translateX(calc(var(--fx) * 100vw - var(--ox, 50vw))); } }
 @keyframes cf-y {
   0% { transform: translateY(0); animation-timing-function: cubic-bezier(.15, .65, .35, 1); }
-  26% { transform: translateY(calc(var(--up) * -1)); animation-timing-function: cubic-bezier(.4, .1, .65, .85); }
-  100% { transform: translateY(calc(100dvh - 150px + var(--fy))); }
+  26% { transform: translateY(calc(var(--oy, 45vh) * var(--upf) * -1)); animation-timing-function: cubic-bezier(.4, .1, .65, .85); }
+  100% { transform: translateY(calc(100dvh - var(--oy, 45vh) + var(--fy))); }
 }
 /* Згасає наприкінці падіння, коли конфеті вже майже внизу. */
 @keyframes cf-out { 0%, 72% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes cf-flutter {
-  0% { transform: rotateZ(var(--rot)) rotateX(0deg); filter: hue-rotate(0deg) brightness(1) saturate(1.1); }
-  25% { filter: hue-rotate(70deg) brightness(1.7) saturate(1.4); }
-  50% { transform: rotateZ(calc(var(--rot) + 90deg)) rotateX(180deg); filter: hue-rotate(150deg) brightness(.85) saturate(1.2); }
-  75% { filter: hue-rotate(230deg) brightness(1.8) saturate(1.5); }
-  100% { transform: rotateZ(calc(var(--rot) + 180deg)) rotateX(360deg); filter: hue-rotate(320deg) brightness(1) saturate(1.1); }
+  0% { transform: rotateZ(var(--rot)) rotateX(0deg); }
+  100% { transform: rotateZ(calc(var(--rot) + 180deg)) rotateX(360deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1336,35 +1352,6 @@ html[data-canvas-hold="drum"] .confetti { display: none; }
 @supports (-moz-appearance: none) {
   * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent; }
 }
-
-/* Кнопка «Говорити / Продовжити» — легка, а не важка: тонований фон і акцентна рамка замість
-   суцільного темного градієнта з великою тінню. Головною діє, але не «тисне». Під час запису
-   тон трохи насичується, а хвиля навколо — ледь помітна й повільна. */
-.talk {
-  background: color-mix(in srgb, var(--btn-fill) 22%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--accent-strong) 55%, var(--line));
-  color: var(--accent);
-  box-shadow: none;
-}
-.talk:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--btn-fill) 32%, var(--surface));
-  border-color: var(--accent-strong);
-  transform: none;
-  box-shadow: none;
-}
-.talk[aria-pressed="true"],
-.talk:hover[aria-pressed="true"]:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-strong) 30%, var(--surface));
-  border-color: var(--accent-strong);
-  color: var(--accent);
-  box-shadow: none;
-  animation: talk-wave 2.6s ease-out infinite;
-}
-@keyframes talk-wave {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-strong) 28%, transparent); }
-  100% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent-strong) 0%, transparent); }
-}
-@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"] { animation: none; } }
 
 /* Підпис обсягу відповіді — жовто-оранжевий замість червонуватого: «ще можна розкрити» — це не
    помилка. Тон темний (світла тема) чи світлий (темна) — контраст на тлі картки понад 4.5:1. */
