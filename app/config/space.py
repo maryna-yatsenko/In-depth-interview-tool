@@ -46,6 +46,15 @@ DEFAULT_OPENING_TEXT = (
 )
 
 
+# Заготовки нового гайда: справжні тексти, а не «TODO» — їх одразу можна прочитати
+# респондентові, а дослідник замінює на свої.
+DEFAULT_FIRST_QUESTION = "Розкажіть, будь ласка, про ваш досвід: що для вас було найважливішим?"
+DEFAULT_CHECKLIST = ["Конкретний приклад із вашого досвіду", "Що було найскладнішим"]
+DEFAULT_CLOSING_TEXT = (
+    "Дякуємо за ваш час і відвертість! Ваші відповіді допоможуть нам краще зрозуміти ваш досвід."
+)
+
+
 def consent_text_or_default(text: str) -> str:
     value = (text or "").strip()
     if not value or value.upper().startswith("TODO"):
@@ -354,7 +363,8 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
         topics=topics,
         max_turns=int(data.get("max_turns", 40)),
         opening=opening_or_default(data.get("opening", "")),
-        closing=data.get("closing", ""),
+        closing=DEFAULT_CLOSING_TEXT if str(data.get("closing", "")).strip().upper().startswith("TODO")
+        else data.get("closing", ""),
         narrative_prompt=narrative.get("prompt", ""),
         narrative_turns=int(narrative.get("turns", 0)),
         narrative_holds=narrative.get("holds", []),

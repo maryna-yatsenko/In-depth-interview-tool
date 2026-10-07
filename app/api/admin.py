@@ -18,7 +18,9 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..config.space import DEFAULT_CONSENT_TEXT, DEFAULT_OPENING_TEXT, ConfigError, load_guide, load_space
+from ..config.space import (DEFAULT_CHECKLIST, DEFAULT_CLOSING_TEXT, DEFAULT_CONSENT_TEXT,
+                            DEFAULT_FIRST_QUESTION, DEFAULT_OPENING_TEXT, ConfigError, load_guide,
+                            load_space)
 from ..providers.base import ProviderError
 from ..providers.registry import build_llm
 from ..storage import db as store_db
@@ -597,13 +599,13 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
         guide.pop("_comment", None)
         guide["goal"] = "TODO: що саме треба зрозуміти"
         guide["opening"] = DEFAULT_OPENING_TEXT
-        guide["closing"] = "TODO: подяка без резюме"
+        guide["closing"] = DEFAULT_CLOSING_TEXT
         guide["topics"] = [{
             "id": "topic-1",
-            "title": "TODO: назва теми",
-            "must_learn": ["TODO: що треба зʼясувати"],
+            "title": DEFAULT_FIRST_QUESTION[:40],
+            "must_learn": list(DEFAULT_CHECKLIST),
             "max_probes": 4,
-            "ask_if_missed": "TODO: питання, якщо тему взагалі не згадали",
+            "ask_if_missed": DEFAULT_FIRST_QUESTION,
         }]
         validator = lambda p: load_guide(p, require_scripted=True)
         _write_validated(root, space_key, path, guide, validator)

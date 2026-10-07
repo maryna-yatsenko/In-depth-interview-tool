@@ -399,7 +399,7 @@
       // Заготовка «TODO…» у «Вітанні» показується стандартним текстом, яким воно й буде.
       var greeting = String(data.opening || "");
       el("guide-opening").value = /^\s*TODO/i.test(greeting) ? DEFAULT_OPENING_TEXT : greeting;
-      el("guide-closing").value = data.closing || "";
+      el("guide-closing").value = /^\s*TODO/i.test(String(data.closing || "")) ? DEFAULT_CLOSING_TEXT : (data.closing || "");
       el("guide-max-turns").value = data.max_turns || 30;
       el("guide-feedback-prompt").value = data.feedback_prompt || "";
       el("guide-feedback-style").value = data.feedback_style || "stars";
@@ -834,7 +834,7 @@
     var textarea = document.createElement("textarea");
     textarea.rows = 2;
     textarea.className = "topic-question-input";
-    textarea.value = topic.ask_if_missed || "";
+    textarea.value = withoutTodo(topic.ask_if_missed);
     textarea.placeholder = "Що саме питає інтервʼюер, якщо респондент про це ще не сказав сам.";
     wrap.appendChild(textarea);
 
@@ -1020,7 +1020,7 @@
     mustLearnList.className = "must-learn-list";
     var items = topic.must_learn && topic.must_learn.length ? topic.must_learn : [""];
     items.forEach(function (item) {
-      mustLearnList.appendChild(buildMustLearnRow(mustLearnText(item)));
+      mustLearnList.appendChild(buildMustLearnRow(withoutTodo(mustLearnText(item))));
     });
     renumberMustLearnItems(mustLearnList);
     mustLearnWrap.appendChild(mustLearnList);
@@ -1137,6 +1137,16 @@
     "• Тут немає правильних чи неправильних відповідей.\n" +
     "• Ви можете припинити інтервʼю в будь-який момент.\n" +
     "• Не називайте персональних даних інших людей.";
+
+  // Заготовки нового гайда (ті самі, що в app/config/space.py).
+  var DEFAULT_FIRST_QUESTION = "Розкажіть, будь ласка, про ваш досвід: що для вас було найважливішим?";
+  var DEFAULT_CHECKLIST = ["Конкретний приклад із вашого досвіду", "Що було найскладнішим"];
+  var DEFAULT_CLOSING_TEXT = "Дякуємо за ваш час і відвертість! Ваші відповіді допоможуть нам краще зрозуміти ваш досвід.";
+
+  // «TODO…» — застаріла заготовка: у полі її не показуємо, лишається порожнє поле з підказкою.
+  function withoutTodo(text) {
+    return /^\s*TODO/i.test(String(text || "")) ? "" : String(text || "");
+  }
 
   function loadSpaceData() {
     api("/api/admin/space?space=" + encodeURIComponent(state.space)).then(function (data) {
@@ -2159,10 +2169,13 @@
      без назви — в останній блок, як було до появи блоків. */
   function editorIsBlank() {
     return topicCards().every(function (card) {
-      var question = card.querySelector(".topic-question-input");
-      var points = Array.prototype.filter.call(
-        card.querySelectorAll(".must-learn-item input"), function (i) { return i.value.trim(); });
-      return !(question && question.value.trim()) && !points.length;
+      var question = (card.querySelector(".topic-question-input").value || "").trim();
+      var points = Array.prototype.map.call(
+        card.querySelectorAll(".must-learn-item input"), function (i) { return i.value.trim(); }).filter(Boolean);
+      // Заготовка нового гайда (стандартне питання з його двома пунктами) — теж «порожньо».
+      var isDefault = question === DEFAULT_FIRST_QUESTION &&
+        points.join("|") === DEFAULT_CHECKLIST.join("|");
+      return isDefault || (!question && !points.length);
     });
   }
 

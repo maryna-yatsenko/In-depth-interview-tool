@@ -66,6 +66,13 @@ class TestAdminFiles(unittest.TestCase):
         self.assertEqual(opening_or_default(""), "")
         self.assertEqual(opening_or_default("Привіт!"), "Привіт!")
 
+    def test_new_guide_has_no_todo_placeholders_in_questions(self):
+        admin_api.create_space(self.root, "clean", "Чисте")
+        guide = load_guide(os.path.join(self.root, "clean", "guides", "first.json"))
+        texts = [guide.opening, guide.closing] + [
+            t.ask_if_missed for t in guide.topics] + [p for t in guide.topics for p in t.must_learn]
+        self.assertFalse([x for x in texts if x.upper().startswith("TODO")], texts)
+
     def test_new_space_rejects_duplicate(self):
         admin_api.create_space(self.root, "dup", "Раз")
         with self.assertRaises(admin_api.AdminError) as ctx:
