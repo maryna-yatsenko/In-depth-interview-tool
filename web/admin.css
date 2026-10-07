@@ -1828,13 +1828,8 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
 }
 .improve-undo:hover { color: var(--text); }
 
-/* Смислові блоки мають читатись як окремі розділи: великий проміжок між ними й
-   тонка пунктирна лінія-розділювач посередині проміжку. Те саме — між «Вітанням»,
-   блоками та «Прощанням»: це інший рівень, ніж картки питань усередині блоку. */
-.topic-block + .topic-block::before {
-  content: ""; position: absolute; left: 6%; right: 6%; top: -25px;
-  border-top: 1px dashed color-mix(in srgb, var(--muted) 40%, var(--line));
-}
+/* Смислові блоки читаються як окремі розділи завдяки великому проміжку між ними
+   (без ліній-розділювачів). Те саме — між «Вітанням», блоками та «Прощанням». */
 #tab-questions #guide-topics-list { margin-top: 24px; }
 #tab-questions .add-block-row { margin-bottom: 40px; }
 
