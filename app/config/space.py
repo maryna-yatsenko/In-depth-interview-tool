@@ -43,6 +43,15 @@ def consent_text_or_default(text: str) -> str:
     return text
 
 
+def opening_or_default(text: str) -> str:
+    """Вітання гайда за замовчуванням — той самий стандартний текст, що й першої сторінки.
+    Лише для заготовки «TODO…»: свідомо порожнє вітання лишається порожнім."""
+    value = (text or "").strip()
+    if value.upper().startswith("TODO"):
+        return DEFAULT_CONSENT_TEXT
+    return text
+
+
 @dataclass
 class Privacy:
     """Що вичищати. Для кожного простору своє."""
@@ -334,7 +343,7 @@ def load_guide(path: str, require_scripted: bool = False) -> Guide:
         goal=data["goal"],
         topics=topics,
         max_turns=int(data.get("max_turns", 40)),
-        opening=data.get("opening", ""),
+        opening=opening_or_default(data.get("opening", "")),
         closing=data.get("closing", ""),
         narrative_prompt=narrative.get("prompt", ""),
         narrative_turns=int(narrative.get("turns", 0)),

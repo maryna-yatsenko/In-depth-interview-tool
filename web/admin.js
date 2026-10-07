@@ -396,7 +396,9 @@
         "&guide=" + encodeURIComponent(key)).then(function (data) {
       state.guideData = data;
       el("guide-goal").value = data.goal || "";
-      el("guide-opening").value = data.opening || "";
+      // Заготовка «TODO…» у «Вітанні» показується стандартним текстом, яким воно й буде.
+      var greeting = String(data.opening || "");
+      el("guide-opening").value = /^\s*TODO/i.test(greeting) ? DEFAULT_CONSENT_TEXT : greeting;
       el("guide-closing").value = data.closing || "";
       el("guide-max-turns").value = data.max_turns || 30;
       el("guide-feedback-prompt").value = data.feedback_prompt || "";

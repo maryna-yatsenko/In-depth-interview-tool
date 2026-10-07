@@ -596,7 +596,7 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
         guide = _load_json_aware(root, space_key, path) or {}
         guide.pop("_comment", None)
         guide["goal"] = "TODO: що саме треба зрозуміти"
-        guide["opening"] = "TODO: перше питання — однакове для всіх респондентів"
+        guide["opening"] = DEFAULT_CONSENT_TEXT
         guide["closing"] = "TODO: подяка без резюме"
         guide["topics"] = [{
             "id": "topic-1",
