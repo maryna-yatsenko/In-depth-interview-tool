@@ -26,6 +26,23 @@ class Persona:
     self_intro: str                      # як інтервʼюер представляється
 
 
+# Текст першої сторінки форми за замовчуванням: його бачить респондент, поки
+# дослідник не написав свій. Діє й для порожнього поля, і для заготовки «TODO…».
+DEFAULT_CONSENT_TEXT = (
+    "Це автоматичне інтервʼю про ваш особистий досвід. Розповідайте якомога детальніше: "
+    "нам важливо зрозуміти, як усе відбувалося насправді.\n\n"
+    "Ви відповідатимете голосом, а система записуватиме та розшифровуватиме ваші відповіді. "
+    "Інтервʼю триватиме приблизно 30–50 хвилин."
+)
+
+
+def consent_text_or_default(text: str) -> str:
+    value = (text or "").strip()
+    if not value or value.upper().startswith("TODO"):
+        return DEFAULT_CONSENT_TEXT
+    return text
+
+
 @dataclass
 class Privacy:
     """Що вичищати. Для кожного простору своє."""
@@ -152,7 +169,7 @@ def load_space(path: str) -> SpaceConfig:
     privacy_raw = data.get("privacy", {})
     privacy = Privacy(
         deidentify=bool(privacy_raw.get("deidentify", False)),
-        consent_text=privacy_raw.get("consent_text", ""),
+        consent_text=consent_text_or_default(privacy_raw.get("consent_text", "")),
         patterns=privacy_raw.get("patterns", []),
         use_builtin_patterns=bool(privacy_raw.get("use_builtin_patterns", True)),
     )

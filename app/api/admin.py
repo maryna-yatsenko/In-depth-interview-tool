@@ -18,7 +18,7 @@ import tempfile
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..config.space import ConfigError, load_guide, load_space
+from ..config.space import DEFAULT_CONSENT_TEXT, ConfigError, load_guide, load_space
 from ..providers.base import ProviderError
 from ..providers.registry import build_llm
 from ..storage import db as store_db
@@ -576,7 +576,7 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     data["persona"]["self_intro"] = "TODO: як інтервʼюер представляється респонденту"
     privacy = dict(data.get("privacy") or {})
     privacy["deidentify"] = False
-    privacy["consent_text"] = "TODO: текст згоди"
+    privacy["consent_text"] = DEFAULT_CONSENT_TEXT
     data["privacy"] = privacy
     branding = dict(data.get("branding") or {})
     branding["page_title"] = title

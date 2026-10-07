@@ -43,6 +43,19 @@ class TestAdminFiles(unittest.TestCase):
         self.assertNotIn("велосипед", blob)
         self.assertIn("todo", space.persona.self_intro.lower())
 
+    def test_new_space_gets_default_consent_text(self):
+        from app.config.space import DEFAULT_CONSENT_TEXT
+        admin_api.create_space(self.root, "fresh", "Свіже")
+        space = load_space(os.path.join(self.root, "fresh", "space.json"))
+        self.assertEqual(space.privacy.consent_text, DEFAULT_CONSENT_TEXT)
+        self.assertNotIn("TODO", space.privacy.consent_text)
+
+    def test_todo_or_empty_consent_text_falls_back_to_default(self):
+        from app.config.space import DEFAULT_CONSENT_TEXT, consent_text_or_default
+        self.assertEqual(consent_text_or_default("TODO: текст згоди"), DEFAULT_CONSENT_TEXT)
+        self.assertEqual(consent_text_or_default("   "), DEFAULT_CONSENT_TEXT)
+        self.assertEqual(consent_text_or_default("Мій текст"), "Мій текст")
+
     def test_new_space_rejects_duplicate(self):
         admin_api.create_space(self.root, "dup", "Раз")
         with self.assertRaises(admin_api.AdminError) as ctx:
