@@ -725,23 +725,28 @@ textarea:focus {
     var(--btn-fill) 70%);
 }
 
-/* Активний запис — колишній «електричний» фіолет, як і було; змінена лише хвиля навколо кнопки:
-   розмите «дихаюче» світіння (без чітких країв), яке повільно наростає й згасає. */
+/* Активний запис — колишній «електричний» фіолет, як і було; навколо кнопки — класична «хвиля»:
+   прозорий фіолетовий фон розростається назовні й згасає, потім друга хвиля з затримкою. */
+.talk { position: relative; isolation: isolate; }
 .talk[aria-pressed="true"] {
   background: linear-gradient(180deg, #8a6cf2 0%, #6741d9 75%);
   border-color: #6741d9; color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 1px 1px rgba(20, 20, 20, .18), 0 8px 16px -8px rgba(20, 20, 20, .35);
-  animation: talk-wave 2.4s ease-in-out infinite;
 }
 .talk:hover[aria-pressed="true"]:not(:disabled) {
   background: linear-gradient(180deg, #9b80f5 0%, #6741d9 70%);
   border-color: #6741d9; color: #fff;
 }
-@keyframes talk-wave {
-  0%, 100% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px rgba(20, 20, 20, .35), 0 0 6px 0 rgba(138, 108, 242, .25), 0 0 0 0 rgba(138, 108, 242, 0); }
-  50% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 8px 16px -8px rgba(20, 20, 20, .35), 0 0 22px 4px rgba(138, 108, 242, .55), 0 0 46px 14px rgba(138, 108, 242, .22); }
+.talk[aria-pressed="true"]::before, .talk[aria-pressed="true"]::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: rgba(138, 108, 242, .45);
+  animation: talk-ripple 2.4s ease-out infinite;
 }
-@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"] { animation: none; } }
+.talk[aria-pressed="true"]::after { animation-delay: 1.2s; }
+@keyframes talk-ripple {
+  0% { transform: scale(1); opacity: .6; }
+  100% { transform: scale(1.35, 1.7); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .talk[aria-pressed="true"]::before, .talk[aria-pressed="true"]::after { animation: none; display: none; } }
 
 
 /* «Попереднє» й «Наступне» — по краях, не парою в центрі: це протилежні дії
@@ -1357,8 +1362,8 @@ html[data-canvas-hold="drum"] .confetti { display: none; }
 /* Підпис обсягу відповіді — жовто-оранжевий замість червонуватого: «ще можна розкрити» — це не
    помилка. Тон темний (світла тема) чи світлий (темна) — контраст на тлі картки понад 4.5:1. */
 :root { --amber: #f59e0b; --amber-text: #b45309; }
-@media (prefers-color-scheme: dark) { :root { --amber: #fbbf24; --amber-text: #fcd34d; } }
-:root[data-theme="dark"] { --amber: #fbbf24; --amber-text: #fcd34d; }
+@media (prefers-color-scheme: dark) { :root { --amber: #fb923c; --amber-text: #fdba74; } }
+:root[data-theme="dark"] { --amber: #fb923c; --amber-text: #fdba74; }
 :root[data-theme="light"] { --amber: #f59e0b; --amber-text: #b45309; }
 .word-track > i { background: var(--amber); }
 .word-progress.met .word-track > i { background: var(--good); }
