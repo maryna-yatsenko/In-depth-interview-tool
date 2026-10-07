@@ -103,6 +103,14 @@ echo 'ANTHROPIC_API_KEY=ваш-ключ' > .env
 .venv/bin/python local/cli.py --space spaces/example --llm anthropic
 ```
 
+Кнопка «Скопіювати посилання» в панелі дослідника веде на форму респондента за
+адресою `RESPONDENT_URL`. На Vercel вона вже задана; локально додайте її в `.env`
+(інакше посилання буде на `127.0.0.1`, яке ніхто, крім вас, не відкриє):
+
+```bash
+echo 'RESPONDENT_URL=https://ваш-проєкт.vercel.app' >> .env
+```
+
 Термінальний канал без ключа й без витрат — перевіряє механіку:
 
 ```bash
