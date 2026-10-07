@@ -240,6 +240,10 @@
       el("confirm-text").textContent = options.text;
       var ok = el("btn-confirm-ok");
       ok.textContent = options.confirmLabel || "Підтвердити";
+      // Третя, друга за вагою дія (наприклад «Додати»): resolve("alt").
+      var alt = el("btn-confirm-alt");
+      alt.textContent = options.altLabel || "";
+      alt.classList.toggle("hidden", !options.altLabel);
       el("confirm-modal").classList.remove("hidden");
       el("btn-confirm-cancel").focus();
     });
@@ -2437,14 +2441,33 @@
         var questions = parsed.items;
         if (!questions.length) { errorNode.textContent = "У файлі немає питань."; return; }
         if (questions.length > 100) { errorNode.textContent = "Забагато питань: до 100 за раз."; return; }
-        importSeq += 1;
-        var blank = editorIsBlank();
-        var added = appendImportedQuestions(questions, importSeq);
-        var extras = [];
-        if (fillIfUntouched("guide-opening", "opening", parsed.opening, blank)) extras.push("привітання");
-        if (fillIfUntouched("guide-closing", "closing", parsed.closing, blank)) extras.push("прощання");
-        var row = addImportedDoc(importSeq, file.name, questions.length, added.newBlocks, extras, parsed.skipped);
-        improveImportedQuestions(added.cards, row);
+        function proceed(replace) {
+          if (replace) {
+            el("guide-topics-list").innerHTML = "";
+            clearImportedDocs();
+          }
+          importSeq += 1;
+          var blank = editorIsBlank();
+          var added = appendImportedQuestions(questions, importSeq);
+          var extras = [];
+          if (fillIfUntouched("guide-opening", "opening", parsed.opening, blank)) extras.push("привітання");
+          if (fillIfUntouched("guide-closing", "closing", parsed.closing, blank)) extras.push("прощання");
+          var row = addImportedDoc(importSeq, file.name, questions.length, added.newBlocks, extras, parsed.skipped);
+          improveImportedQuestions(added.cards, row);
+        }
+        // Гайд уже має питання: дослідниця вирішує, замінити їх чи дописати в кінець
+        // (інакше завантажений документ лягав би під старим вмістом).
+        if (editorIsBlank()) { proceed(false); return; }
+        confirmAction({
+          title: "Замінити питання гайда?",
+          text: "У гайді вже є питання (" + topicCards().length + "). Замінити їх питаннями з документа (" +
+            questions.length + ") чи додати нові в кінець? Нічого не збережеться, доки ви не натиснете «Зберегти гайд».",
+          confirmLabel: "Замінити",
+          altLabel: "Додати в кінець"
+        }).then(function (choice) {
+          if (choice === "alt") proceed(false);
+          else if (choice) proceed(true);
+        });
       }).catch(function (err) {
         errorNode.textContent = "Файл не схожий на список питань: " + err.message;
       });
@@ -2498,6 +2521,7 @@
   });
   el("btn-confirm-ok").addEventListener("click", function () { closeConfirm(true); });
   el("btn-confirm-cancel").addEventListener("click", function () { closeConfirm(false); });
+  el("btn-confirm-alt").addEventListener("click", function () { closeConfirm("alt"); });
   el("btn-confirm-x").addEventListener("click", function () { closeConfirm(false); });
   el("confirm-modal").addEventListener("click", function (event) {
     if (event.target.id === "confirm-modal") closeConfirm(false);
