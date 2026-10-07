@@ -574,6 +574,9 @@ def _blank_domain_content(root: str, space_key: str, title: str) -> None:
     # mtime файлу, не зсувається при подальших редагуваннях через адмінку.
     data["created_at"] = datetime.now(timezone.utc).isoformat()
     data.pop("_comment", None)
+    # Нове інтервʼю одразу просить згоду на запис голосу й записує його.
+    data["interface"] = dict(data.get("interface") or {})
+    data["interface"]["record_voice"] = True
     data["persona"] = dict(data.get("persona") or {})
     data["persona"]["self_intro"] = "TODO: як інтервʼюер представляється респонденту"
     privacy = dict(data.get("privacy") or {})

@@ -986,14 +986,7 @@ textarea:focus {
 /* ── згода на запис голосу ────────────────────────────────────────────────
    Окремим блоком і окремою галочкою: голос неможливо деідентифікувати, тому
    згода на нього не може бути частиною згоди на інтервʼю. */
-.record-consent {
-  margin: 0 0 22px;
-  padding: 14px 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-}
+.record-consent { margin: 0 0 22px; padding: 0; }
 .record-check { display: flex; gap: 11px; align-items: flex-start; cursor: pointer; }
 .record-check input { margin: 3px 0 0; flex: none; width: 16px; height: 16px; }
 /* Усі прапорці й радіокнопки — фіолетові (акцент теми), а не системний синій. */

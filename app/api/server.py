@@ -541,9 +541,8 @@ def make_handler(
                 return
             if self._space.draft:
                 self._send_json({
-                    "error": "Простір '%s' — чернетка: він ще не заповнений. "
-                             "Заповни його в панелі дослідника і познач як готовий."
-                             % self._space.key
+                    "error": "Це інтервʼю ще чернетка й не опубліковане. Щоб його можна було "
+                             "пройти, дослідник має позначити його «Опубліковано» в панелі."
                 }, 409)
                 return
             respondent_name = ((data or {}).get("respondent_name") or "").strip()

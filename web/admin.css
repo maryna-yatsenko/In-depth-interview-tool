@@ -1895,3 +1895,7 @@ body.admin[data-theme="dark"] { --danger: #ff5c5c; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 @media (max-width: 520px) { .toast-host { right: 16px; left: 16px; bottom: 88px; align-items: stretch; } .toast { max-width: none; width: auto; } }
+
+/* Прапорець у налаштуваннях: звичайний рядок «галочка + підпис», а не поле на всю ширину. */
+.check-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; font-size: 14px; color: var(--text); cursor: pointer; }
+.check-row input[type="checkbox"] { width: 16px; height: 16px; min-width: 16px; margin: 0; padding: 0; flex: none; }

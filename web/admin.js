@@ -1217,6 +1217,7 @@
       languageChips.refresh();
       renderStatusChip(data.draft);
       el("space-mode").value = ((data.interface || {}).mode) || "text";
+      el("space-record-voice").checked = !!((data.interface || {}).record_voice);
       selects.mode.refresh();
       el("space-error").textContent = "";
     }).catch(function (err) { el("space-error").textContent = err.message; });
@@ -1235,7 +1236,8 @@
       // окремим полем тут — base.draft уже містить актуальне значення.
       draft: !!base.draft,
       interface: Object.assign({}, base.interface || {}, {
-        mode: el("space-mode").value
+        mode: el("space-mode").value,
+        record_voice: el("space-record-voice").checked
       }),
       // providers (LLM/TTS) сюди не входять: на задеплоєній версії їх все
       // одно підмінює env-змінна (LLM_PROVIDER_OVERRIDE/TTS_PROVIDER_OVERRIDE),
